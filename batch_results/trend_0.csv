@@ -1,2 +1,0 @@
-﻿code,name,industry,date,close,pct_change,amount_cny,volume_ratio_vs_5d,return_20d_pct,max_drawdown_10d_pct,ma20,ma60,score,financial_pass,financial_score,rev_growth,profit_growth,profit_margin,matched_reason
-000050,深天马Ａ,C 制造业,2026-06-18,8.94,-2.19,1184703496.0,1.79,17.63,12.78,8.15,8.04,76.56,False,0,"[11.03, 8.16, -7.01]",[-331.46],"[1.05, 0.31, -2.04]",close>MA20>MA60; volume breakout; liquid; 20d return in range; drawdown controlled

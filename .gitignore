@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# 安装库缓存
+.pip/
+*.egg-info/
+*.egg
+
+# 日志与临时文件
+*.log
+*.tmp
+*.temp
+.cache/
+tmp/
+
+# 编辑器与 IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# 数据分析与量化项目
+*.csv
+*.xlsx
+*.pkl
+*.parquet
+*.h5
+data/
+cache/
+plots/
+charts/
+output/
+
+# 行情与策略缓存
+daily_cache/
+batch_results/
+scan_history/
+scan_progress.json
+financial_cache.json
+industry_map_cache.json
+market_breadth.json
+kline_*.png
+
+# 环境变量与密钥
+.env
+.env.*
+config_secret.json
+
+# 测试
+.pytest_cache/
+.coverage
+htmlcov/
