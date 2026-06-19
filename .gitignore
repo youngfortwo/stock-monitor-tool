@@ -47,11 +47,16 @@ output/
 daily_cache/
 batch_results/
 scan_history/
-scan_progress.json
+scan_progress*.json
 financial_cache.json
 industry_map_cache.json
+market_cap_cache.json
 market_breadth.json
 kline_*.png
+
+# 脚本运行默认输出 CSV（不要提交）
+*_candidates.csv
+stock_candidates.csv
 
 # 环境变量与密钥
 .env
