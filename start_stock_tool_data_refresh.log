@@ -1,0 +1,1169 @@
+Installing dependencies...
+Defaulting to user installation because normal site-packages is not writeable
+Looking in indexes: https://pypi.tuna.tsinghua.edu.cn/simple
+Requirement already satisfied: akshare in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from -r requirements-stock-scanner.txt (line 1)) (1.18.64)
+Requirement already satisfied: pandas in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from -r requirements-stock-scanner.txt (line 2)) (2.3.3)
+Requirement already satisfied: mplfinance in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from -r requirements-stock-scanner.txt (line 3)) (0.12.10b0)
+Requirement already satisfied: openpyxl in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from -r requirements-stock-scanner.txt (line 4)) (3.1.5)
+Requirement already satisfied: beautifulsoup4>=4.9.1 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from akshare->-r requirements-stock-scanner.txt (line 1)) (4.14.3)
+Requirement already satisfied: lxml>=4.2.1 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from akshare->-r requirements-stock-scanner.txt (line 1)) (6.1.1)
+Requirement already satisfied: requests>=2.22.0 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from akshare->-r requirements-stock-scanner.txt (line 1)) (2.31.0)
+Requirement already satisfied: curl_cffi>=0.13.0 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from akshare->-r requirements-stock-scanner.txt (line 1)) (0.13.0)
+Requirement already satisfied: html5lib>=1.0.1 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from akshare->-r requirements-stock-scanner.txt (line 1)) (1.1)
+Requirement already satisfied: xlrd>=1.2.0 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from akshare->-r requirements-stock-scanner.txt (line 1)) (2.0.2)
+Requirement already satisfied: urllib3>=1.25.8 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from akshare->-r requirements-stock-scanner.txt (line 1)) (1.26.15)
+Requirement already satisfied: tqdm>=4.43.0 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from akshare->-r requirements-stock-scanner.txt (line 1)) (4.67.3)
+Requirement already satisfied: jsonpath>=0.82 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from akshare->-r requirements-stock-scanner.txt (line 1)) (0.82.2)
+Requirement already satisfied: tabulate>=0.8.6 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from akshare->-r requirements-stock-scanner.txt (line 1)) (0.9.0)
+Requirement already satisfied: decorator>=4.4.2 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from akshare->-r requirements-stock-scanner.txt (line 1)) (5.3.1)
+Requirement already satisfied: mini-racer>=0.12.4 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from akshare->-r requirements-stock-scanner.txt (line 1)) (0.12.4)
+Requirement already satisfied: numpy>=1.22.4 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from pandas->-r requirements-stock-scanner.txt (line 2)) (2.0.2)
+Requirement already satisfied: python-dateutil>=2.8.2 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from pandas->-r requirements-stock-scanner.txt (line 2)) (2.9.0.post0)
+Requirement already satisfied: pytz>=2020.1 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from pandas->-r requirements-stock-scanner.txt (line 2)) (2026.2)
+Requirement already satisfied: tzdata>=2022.7 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from pandas->-r requirements-stock-scanner.txt (line 2)) (2026.2)
+Requirement already satisfied: matplotlib in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from mplfinance->-r requirements-stock-scanner.txt (line 3)) (3.9.4)
+Requirement already satisfied: et-xmlfile in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from openpyxl->-r requirements-stock-scanner.txt (line 4)) (2.0.0)
+Requirement already satisfied: soupsieve>=1.6.1 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from beautifulsoup4>=4.9.1->akshare->-r requirements-stock-scanner.txt (line 1)) (2.8.4)
+Requirement already satisfied: typing-extensions>=4.0.0 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from beautifulsoup4>=4.9.1->akshare->-r requirements-stock-scanner.txt (line 1)) (4.10.0)
+Requirement already satisfied: cffi>=1.12.0 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from curl_cffi>=0.13.0->akshare->-r requirements-stock-scanner.txt (line 1)) (1.16.0)
+Requirement already satisfied: certifi>=2024.2.2 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from curl_cffi>=0.13.0->akshare->-r requirements-stock-scanner.txt (line 1)) (2024.2.2)
+Requirement already satisfied: pycparser in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from cffi>=1.12.0->curl_cffi>=0.13.0->akshare->-r requirements-stock-scanner.txt (line 1)) (2.22)
+Requirement already satisfied: six>=1.9 in /Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/site-packages (from html5lib>=1.0.1->akshare->-r requirements-stock-scanner.txt (line 1)) (1.15.0)
+Requirement already satisfied: webencodings in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from html5lib>=1.0.1->akshare->-r requirements-stock-scanner.txt (line 1)) (0.5.1)
+Requirement already satisfied: charset-normalizer<4,>=2 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from requests>=2.22.0->akshare->-r requirements-stock-scanner.txt (line 1)) (3.3.2)
+Requirement already satisfied: idna<4,>=2.5 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from requests>=2.22.0->akshare->-r requirements-stock-scanner.txt (line 1)) (3.6)
+Requirement already satisfied: contourpy>=1.0.1 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from matplotlib->mplfinance->-r requirements-stock-scanner.txt (line 3)) (1.3.0)
+Requirement already satisfied: cycler>=0.10 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from matplotlib->mplfinance->-r requirements-stock-scanner.txt (line 3)) (0.12.1)
+Requirement already satisfied: fonttools>=4.22.0 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from matplotlib->mplfinance->-r requirements-stock-scanner.txt (line 3)) (4.60.2)
+Requirement already satisfied: kiwisolver>=1.3.1 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from matplotlib->mplfinance->-r requirements-stock-scanner.txt (line 3)) (1.4.7)
+Requirement already satisfied: packaging>=20.0 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from matplotlib->mplfinance->-r requirements-stock-scanner.txt (line 3)) (26.2)
+Requirement already satisfied: pillow>=8 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from matplotlib->mplfinance->-r requirements-stock-scanner.txt (line 3)) (11.3.0)
+Requirement already satisfied: pyparsing>=2.3.1 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from matplotlib->mplfinance->-r requirements-stock-scanner.txt (line 3)) (3.3.2)
+Requirement already satisfied: importlib-resources>=3.2.0 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from matplotlib->mplfinance->-r requirements-stock-scanner.txt (line 3)) (6.5.2)
+Requirement already satisfied: zipp>=3.1.0 in /Users/yxy/Library/Python/3.9/lib/python/site-packages (from importlib-resources>=3.2.0->matplotlib->mplfinance->-r requirements-stock-scanner.txt (line 3)) (3.23.1)
+Generating market breadth and panic index...
+Please wait for a moment:   0%|          | 0/70 [00:00<?, ?it/s]Please wait for a moment:   1%|▏         | 1/70 [00:00<00:10,  6.69it/s]Please wait for a moment:   3%|▎         | 2/70 [00:00<00:10,  6.77it/s]Please wait for a moment:   4%|▍         | 3/70 [00:00<00:09,  6.89it/s]Please wait for a moment:   6%|▌         | 4/70 [00:00<00:09,  6.87it/s]Please wait for a moment:   7%|▋         | 5/70 [00:00<00:09,  6.61it/s]Please wait for a moment:   9%|▊         | 6/70 [00:00<00:09,  6.70it/s]Please wait for a moment:  10%|█         | 7/70 [00:01<00:10,  6.28it/s]Please wait for a moment:  11%|█▏        | 8/70 [00:01<00:09,  6.52it/s]Please wait for a moment:  13%|█▎        | 9/70 [00:01<00:09,  6.55it/s]Please wait for a moment:  14%|█▍        | 10/70 [00:01<00:09,  6.52it/s]Please wait for a moment:  16%|█▌        | 11/70 [00:01<00:09,  6.50it/s]Please wait for a moment:  17%|█▋        | 12/70 [00:01<00:08,  6.53it/s]Please wait for a moment:  19%|█▊        | 13/70 [00:01<00:08,  6.55it/s]Please wait for a moment:  20%|██        | 14/70 [00:02<00:08,  6.67it/s]Please wait for a moment:  21%|██▏       | 15/70 [00:02<00:08,  6.77it/s]Please wait for a moment:  23%|██▎       | 16/70 [00:02<00:07,  6.75it/s]Please wait for a moment:  24%|██▍       | 17/70 [00:02<00:07,  6.68it/s]Please wait for a moment:  26%|██▌       | 18/70 [00:02<00:07,  6.74it/s]Please wait for a moment:  27%|██▋       | 19/70 [00:02<00:07,  6.69it/s]Please wait for a moment:  29%|██▊       | 20/70 [00:03<00:07,  6.76it/s]Please wait for a moment:  30%|███       | 21/70 [00:03<00:07,  6.74it/s]Please wait for a moment:  31%|███▏      | 22/70 [00:03<00:07,  6.75it/s]Please wait for a moment:  33%|███▎      | 23/70 [00:03<00:06,  6.83it/s]Please wait for a moment:  34%|███▍      | 24/70 [00:03<00:07,  6.52it/s]Please wait for a moment:  36%|███▌      | 25/70 [00:03<00:06,  6.59it/s]Please wait for a moment:  37%|███▋      | 26/70 [00:03<00:06,  6.58it/s]Please wait for a moment:  39%|███▊      | 27/70 [00:04<00:06,  6.64it/s]Please wait for a moment:  40%|████      | 28/70 [00:04<00:06,  6.60it/s]Please wait for a moment:  41%|████▏     | 29/70 [00:04<00:06,  6.65it/s]Please wait for a moment:  43%|████▎     | 30/70 [00:04<00:05,  6.69it/s]Please wait for a moment:  44%|████▍     | 31/70 [00:04<00:06,  6.07it/s]Please wait for a moment:  46%|████▌     | 32/70 [00:04<00:06,  5.99it/s]Please wait for a moment:  47%|████▋     | 33/70 [00:05<00:07,  4.66it/s]Please wait for a moment:  49%|████▊     | 34/70 [00:05<00:07,  4.67it/s]Please wait for a moment:  50%|█████     | 35/70 [00:05<00:07,  4.78it/s]Please wait for a moment:  51%|█████▏    | 36/70 [00:05<00:06,  5.19it/s]Please wait for a moment:  53%|█████▎    | 37/70 [00:06<00:09,  3.34it/s]Please wait for a moment:  54%|█████▍    | 38/70 [00:06<00:08,  3.92it/s]Please wait for a moment:  56%|█████▌    | 39/70 [00:06<00:10,  3.00it/s]Please wait for a moment:  57%|█████▋    | 40/70 [00:07<00:08,  3.57it/s]Please wait for a moment:  59%|█████▊    | 41/70 [00:07<00:09,  2.93it/s]Please wait for a moment:  60%|██████    | 42/70 [00:07<00:07,  3.51it/s]Please wait for a moment:  61%|██████▏   | 43/70 [00:07<00:06,  4.10it/s]Please wait for a moment:  63%|██████▎   | 44/70 [00:08<00:05,  4.66it/s]Please wait for a moment:  64%|██████▍   | 45/70 [00:08<00:04,  5.15it/s]Please wait for a moment:  66%|██████▌   | 46/70 [00:08<00:04,  5.49it/s]Please wait for a moment:  67%|██████▋   | 47/70 [00:08<00:03,  5.84it/s]Please wait for a moment:  69%|██████▊   | 48/70 [00:08<00:03,  5.94it/s]Please wait for a moment:  70%|███████   | 49/70 [00:09<00:05,  3.60it/s]Please wait for a moment:  71%|███████▏  | 50/70 [00:09<00:04,  4.16it/s]Please wait for a moment:  73%|███████▎  | 51/70 [00:09<00:05,  3.26it/s]Please wait for a moment:  74%|███████▍  | 52/70 [00:09<00:04,  3.81it/s]Please wait for a moment:  76%|███████▌  | 53/70 [00:10<00:03,  4.35it/s]Please wait for a moment:  77%|███████▋  | 54/70 [00:10<00:03,  4.87it/s]Please wait for a moment:  79%|███████▊  | 55/70 [00:10<00:02,  5.28it/s]Please wait for a moment:  80%|████████  | 56/70 [00:10<00:02,  5.67it/s]Please wait for a moment:  81%|████████▏ | 57/70 [00:11<00:03,  3.54it/s]Please wait for a moment:  83%|████████▎ | 58/70 [00:11<00:02,  4.13it/s]Please wait for a moment:  84%|████████▍ | 59/70 [00:11<00:02,  4.64it/s]Please wait for a moment:  86%|████████▌ | 60/70 [00:11<00:02,  4.97it/s]Please wait for a moment:  87%|████████▋ | 61/70 [00:11<00:01,  5.33it/s]Please wait for a moment:  89%|████████▊ | 62/70 [00:11<00:01,  5.68it/s]Please wait for a moment:  90%|█████████ | 63/70 [00:12<00:01,  5.97it/s]Please wait for a moment:  91%|█████████▏| 64/70 [00:12<00:00,  6.15it/s]Please wait for a moment:  93%|█████████▎| 65/70 [00:12<00:00,  6.38it/s]Please wait for a moment:  94%|█████████▍| 66/70 [00:12<00:00,  6.44it/s]Please wait for a moment:  96%|█████████▌| 67/70 [00:12<00:00,  6.49it/s]Please wait for a moment:  97%|█████████▋| 68/70 [00:12<00:00,  6.58it/s]Please wait for a moment:  99%|█████████▊| 69/70 [00:12<00:00,  6.69it/s]                                                                         Using market breadth source: stock_zh_a_spot
+Saved market breadth to market_breadth.json
+{
+  "generated_at": "2026-06-19 10:37:34",
+  "total_count": 5527,
+  "up_count": 2023,
+  "down_count": 3394,
+  "flat_count": 110,
+  "up_ratio": 36.6,
+  "down_ratio": 61.41,
+  "panic_index": 62.65,
+  "panic_index_note": "0-100; calculated as down_count / (up_count + down_count) * 100",
+  "avg_pct_change": -0.29,
+  "median_pct_change": -0.77
+}
+
+Batch 1: offset=0, limit=200
+  0%|          | 0/17 [00:00<?, ?it/s]  6%|▌         | 1/17 [00:00<00:03,  4.65it/s] 12%|█▏        | 2/17 [00:00<00:04,  3.47it/s] 18%|█▊        | 3/17 [00:00<00:03,  3.84it/s] 24%|██▎       | 4/17 [00:00<00:03,  4.11it/s] 29%|██▉       | 5/17 [00:01<00:02,  4.11it/s] 35%|███▌      | 6/17 [00:01<00:02,  4.22it/s] 41%|████      | 7/17 [00:01<00:02,  4.23it/s] 47%|████▋     | 8/17 [00:01<00:02,  4.35it/s] 53%|█████▎    | 9/17 [00:02<00:01,  4.34it/s] 59%|█████▉    | 10/17 [00:02<00:01,  4.29it/s] 65%|██████▍   | 11/17 [00:02<00:01,  4.41it/s] 71%|███████   | 12/17 [00:02<00:01,  4.44it/s] 76%|███████▋  | 13/17 [00:03<00:00,  4.42it/s] 82%|████████▏ | 14/17 [00:03<00:00,  4.36it/s] 88%|████████▊ | 15/17 [00:03<00:00,  4.43it/s] 94%|█████████▍| 16/17 [00:03<00:00,  4.43it/s]100%|██████████| 17/17 [00:03<00:00,  4.46it/s]                                               Using stock pool source: stock_info_a_code_name
+Scanning 200 stocks, offset=0, limit=200...
+MATCH 000050 深天马Ａ score=76.56
+Progress: 100/200, matches=1
+Progress: 200/200, matches=1
+Saved 1 candidates to batch_results/trend_0.csv
+  0%|          | 0/17 [00:00<?, ?it/s]  6%|▌         | 1/17 [00:00<00:03,  4.43it/s] 12%|█▏        | 2/17 [00:00<00:03,  4.66it/s] 18%|█▊        | 3/17 [00:00<00:03,  4.54it/s] 24%|██▎       | 4/17 [00:00<00:02,  4.56it/s] 29%|██▉       | 5/17 [00:01<00:02,  4.60it/s] 35%|███▌      | 6/17 [00:01<00:02,  4.51it/s] 41%|████      | 7/17 [00:01<00:02,  4.47it/s] 47%|████▋     | 8/17 [00:01<00:01,  4.57it/s] 53%|█████▎    | 9/17 [00:01<00:01,  4.54it/s] 59%|█████▉    | 10/17 [00:02<00:01,  4.56it/s] 65%|██████▍   | 11/17 [00:02<00:01,  4.56it/s] 71%|███████   | 12/17 [00:02<00:01,  4.56it/s] 76%|███████▋  | 13/17 [00:02<00:00,  4.63it/s] 82%|████████▏ | 14/17 [00:03<00:00,  4.72it/s] 88%|████████▊ | 15/17 [00:03<00:00,  4.60it/s] 94%|█████████▍| 16/17 [00:03<00:00,  3.78it/s]100%|██████████| 17/17 [00:03<00:00,  4.01it/s]                                               Scanning 200 stocks for SEPA Stage 2, offset=0, limit=200, industry mappings=2893...
+MATCH 000007 全新好 K 房地产 score=80.0
+MATCH 000021 深科技 电子 score=99.18
+MATCH 000060 中金岭南 有色金属 score=94.88
+MATCH 000070 特发信息 C 制造业 score=107.13
+MATCH 000510 新金路 C 制造业 score=97.04
+Progress: 100/200, matches=5
+MATCH 000539 粤电力Ａ D 水电煤气 score=85.0
+MATCH 000551 创元科技 C 制造业 score=109.79
+MATCH 000593 德龙汇能 D 水电煤气 score=98.03
+MATCH 000608 阳光股份 K 房地产 score=103.0
+MATCH 000630 铜陵有色 C 制造业 score=106.88
+MATCH 000636 风华高科 C 制造业 score=111.03
+MATCH 000657 中钨高新 C 制造业 score=110.0
+MATCH 000668 荣丰控股 K 房地产 score=115.29
+MATCH 000672 上峰材料 C 制造业 score=106.1
+MATCH 000691 亚太实业 C 制造业 score=126.0
+Progress: 200/200, matches=15
+Saved 15 SEPA Stage 2 candidates to batch_results/sepa_0.csv
+  0%|          | 0/17 [00:00<?, ?it/s]  6%|▌         | 1/17 [00:00<00:03,  5.15it/s] 12%|█▏        | 2/17 [00:00<00:03,  4.96it/s] 18%|█▊        | 3/17 [00:00<00:02,  4.67it/s] 24%|██▎       | 4/17 [00:00<00:02,  4.38it/s] 29%|██▉       | 5/17 [00:01<00:02,  4.43it/s] 35%|███▌      | 6/17 [00:01<00:02,  4.55it/s] 41%|████      | 7/17 [00:01<00:02,  4.43it/s] 47%|████▋     | 8/17 [00:01<00:02,  4.23it/s] 53%|█████▎    | 9/17 [00:02<00:01,  4.17it/s] 59%|█████▉    | 10/17 [00:02<00:01,  3.67it/s] 65%|██████▍   | 11/17 [00:02<00:01,  3.86it/s] 71%|███████   | 12/17 [00:02<00:01,  4.00it/s] 76%|███████▋  | 13/17 [00:03<00:01,  3.93it/s] 82%|████████▏ | 14/17 [00:03<00:00,  3.96it/s] 88%|████████▊ | 15/17 [00:03<00:00,  3.99it/s] 94%|█████████▍| 16/17 [00:03<00:00,  4.17it/s]100%|██████████| 17/17 [00:04<00:00,  4.38it/s]                                               Scanning 200 stocks for SEPA Stage 1, offset=0, limit=200, industry mappings=2893...
+Pass 1/2: fetching history and collecting 120d returns...
+  Pass 1 progress: 100/200
+  Pass 1 progress: 200/200
+Computing RPS for 200 stocks...
+Pass 2/2: evaluating Stage 1 candidates with RPS...
+MATCH 000001 平安银行 J 金融业 score=83.89 RPS=57.29 纯筑底股
+MATCH 000002 万  科Ａ K 房地产 score=49.23 RPS=3.52 纯筑底股
+MATCH 000008 神州高铁 C 制造业 score=89.5 RPS=35.68 纯筑底股
+MATCH 000009 中国宝安 J 金融业 score=85.0 RPS=10.05 纯筑底股
+MATCH 000011 深物业A K 房地产 score=85.0 RPS=30.15 纯筑底股
+MATCH 000012 南  玻Ａ C 制造业 score=65.2 RPS=60.8 纯筑底股
+MATCH 000014 沙河股份 K 房地产 score=89.0 RPS=16.58 纯筑底股
+MATCH 000017 深中华A C 制造业 score=88.0 RPS=8.54 纯筑底股
+MATCH 000019 深粮控股 F 批发零售 score=92.5 RPS=42.21 纯筑底股
+MATCH 000020 深华发Ａ C 制造业 score=88.0 RPS=29.65 纯筑底股
+MATCH 000025 特  力Ａ F 批发零售 score=65.0 RPS=41.71 纯筑底股
+MATCH 000027 深圳能源 公共事业 score=95.93 RPS=71.36 纯筑底股
+MATCH 000028 国药一致 F 批发零售 score=88.3 RPS=52.76 纯筑底股
+MATCH 000030 富奥股份 C 制造业 score=85.0 RPS=20.1 纯筑底股
+MATCH 000034 神州数码 F 批发零售 score=72.5 RPS=67.34 纯筑底股
+MATCH 000035 中国天楹 N 公共环保 score=78.0 RPS=43.22 纯筑底股
+MATCH 000036 华联控股 K 房地产 score=124.5 RPS=67.84 纯筑底股
+MATCH 000037 深南电A 公共事业 score=98.5 RPS=86.43 基础过渡态
+MATCH 000039 中集集团 C 制造业 score=78.5 RPS=66.83 纯筑底股
+MATCH 000045 深纺织Ａ C 制造业 score=92.0 RPS=52.26 纯筑底股
+MATCH 000049 德赛电池 C 制造业 score=99.32 RPS=49.25 纯筑底股
+MATCH 000050 深天马Ａ C 制造业 score=87.03 RPS=68.84 纯筑底股
+MATCH 000058 深 赛 格 L 商务服务 score=86.5 RPS=12.56 纯筑底股
+MATCH 000059 华锦股份 C 制造业 score=89.5 RPS=28.64 纯筑底股
+MATCH 000061 农 产 品 L 商务服务 score=70.74 RPS=2.51 纯筑底股
+MATCH 000063 中兴通讯 C 制造业 score=89.0 RPS=73.37 纯筑底股
+MATCH 000065 北方国际 F 批发零售 score=141.0 RPS=69.35 基础过渡态
+MATCH 000066 中国长城 C 制造业 score=80.5 RPS=87.94 纯筑底股
+MATCH 000068 华控赛格 F 批发零售 score=63.0 RPS=59.3 纯筑底股
+MATCH 000069 华侨城Ａ K 房地产 score=86.5 RPS=10.55 纯筑底股
+MATCH 000089 深圳机场 G 运输仓储 score=91.79 RPS=44.72 纯筑底股
+MATCH 000096 广聚能源 F 批发零售 score=87.5 RPS=15.58 纯筑底股
+MATCH 000099 中信海直 G 运输仓储 score=61.5 RPS=28.14 纯筑底股
+MATCH 000153 丰原药业 C 制造业 score=86.5 RPS=38.69 纯筑底股
+MATCH 000155 川能动力 D 水电煤气 score=126.5 RPS=78.39 纯筑底股
+MATCH 000156 华数传媒 I 信息技术 score=86.5 RPS=54.77 纯筑底股
+MATCH 000157 中联重科 C 制造业 score=89.45 RPS=54.27 纯筑底股
+MATCH 000166 申万宏源 J 金融业 score=63.0 RPS=34.17 纯筑底股
+MATCH 000301 东方盛虹 C 制造业 score=171.5 RPS=80.4 高质量过渡态
+MATCH 000400 许继电气 C 制造业 score=71.0 RPS=44.22 纯筑底股
+MATCH 000401 金隅冀东 C 制造业 score=85.0 RPS=31.66 纯筑底股
+MATCH 000402 金 融 街 K 房地产 score=74.45 RPS=61.31 纯筑底股
+MATCH 000403 派林生物 C 制造业 score=60.0 RPS=25.63 纯筑底股
+MATCH 000404 长虹华意 C 制造业 score=99.5 RPS=81.41 基础过渡态
+MATCH 000407 胜利股份 D 水电煤气 score=72.5 RPS=40.2 纯筑底股
+MATCH 000408 藏格矿业 C 制造业 score=168.5 RPS=73.87 高质量过渡态
+MATCH 000409 云鼎科技 I 信息技术 score=86.5 RPS=25.13 纯筑底股
+MATCH 000410 沈阳机床 C 制造业 score=63.41 RPS=13.57 纯筑底股
+MATCH 000415 渤海租赁 L 商务服务 score=168.0 RPS=79.9 高质量过渡态
+MATCH 000419 通程控股 F 批发零售 score=92.0 RPS=17.09 纯筑底股
+MATCH 000420 吉林化纤 C 制造业 score=122.0 RPS=70.35 纯筑底股
+MATCH 000421 南京公用 D 水电煤气 score=92.0 RPS=22.61 纯筑底股
+MATCH 000422 湖北宜化 C 制造业 score=97.0 RPS=64.32 纯筑底股
+MATCH 000423 东阿阿胶 C 制造业 score=119.7 RPS=62.31 纯筑底股
+MATCH 000425 徐工机械 C 制造业 score=67.5 RPS=27.64 纯筑底股
+MATCH 000426 兴业银锡 B 采矿业 score=73.64 RPS=83.92 纯筑底股
+MATCH 000428 华天酒店 H 住宿餐饮 score=97.0 RPS=63.82 纯筑底股
+MATCH 000498 山东路桥 E 建筑业 score=88.0 RPS=33.17 纯筑底股
+MATCH 000501 武商集团 F 批发零售 score=86.5 RPS=13.07 纯筑底股
+MATCH 000503 国新健康 I 信息技术 score=89.0 RPS=19.1 纯筑底股
+MATCH 000505 京粮控股 C 制造业 score=89.5 RPS=3.02 纯筑底股
+MATCH 000506 招金黄金 B 采矿业 score=78.56 RPS=77.89 纯筑底股
+MATCH 000507 珠海港 G 运输仓储 score=89.45 RPS=50.75 纯筑底股
+MATCH 000513 丽珠集团 C 制造业 score=86.5 RPS=45.73 纯筑底股
+MATCH 000514 渝 开 发 K 房地产 score=89.0 RPS=22.11 纯筑底股
+MATCH 000516 国际医学 Q 卫生 score=86.5 RPS=53.77 纯筑底股
+MATCH 000519 中兵红箭 C 制造业 score=78.46 RPS=82.91 纯筑底股
+MATCH 000520 凤凰航运 G 运输仓储 score=67.0 RPS=50.25 纯筑底股
+MATCH 000521 长虹美菱 C 制造业 score=60.0 RPS=35.18 纯筑底股
+MATCH 000523 红棉股份 C 制造业 score=92.0 RPS=31.16 纯筑底股
+  Pass 2 progress: 100/200, matches=70
+MATCH 000524 岭南控股 L 商务服务 score=91.5 RPS=17.59 纯筑底股
+MATCH 000525 红太阳 C 制造业 score=86.5 RPS=19.6 纯筑底股
+MATCH 000528 柳    工 C 制造业 score=86.5 RPS=7.04 纯筑底股
+MATCH 000529 广弘控股 C 制造业 score=85.0 RPS=21.11 纯筑底股
+MATCH 000531 穗恒运Ａ D 水电煤气 score=80.0 RPS=68.34 纯筑底股
+MATCH 000532 华金资本 S 综合 score=60.0 RPS=18.59 纯筑底股
+MATCH 000533 顺钠股份 C 制造业 score=120.0 RPS=84.42 纯筑底股
+MATCH 000538 云南白药 C 制造业 score=65.17 RPS=45.23 纯筑底股
+MATCH 000541 佛山照明 C 制造业 score=60.0 RPS=33.67 纯筑底股
+MATCH 000543 皖能电力 D 水电煤气 score=75.0 RPS=64.82 纯筑底股
+MATCH 000544 中原环保 D 水电煤气 score=93.21 RPS=56.28 纯筑底股
+MATCH 000545 金浦钛业 C 制造业 score=89.5 RPS=38.19 纯筑底股
+MATCH 000546 金圆股份 C 制造业 score=98.5 RPS=32.16 纯筑底股
+MATCH 000547 航天发展 C 制造业 score=85.96 RPS=37.69 纯筑底股
+MATCH 000550 江铃汽车 C 制造业 score=89.53 RPS=57.79 纯筑底股
+MATCH 000552 甘肃能化 B 采矿业 score=102.14 RPS=60.3 纯筑底股
+MATCH 000553 安道麦A C 制造业 score=98.53 RPS=65.83 纯筑底股
+MATCH 000554 泰山石油 F 批发零售 score=92.5 RPS=63.32 纯筑底股
+MATCH 000555 神州信息 I 信息技术 score=68.0 RPS=11.06 纯筑底股
+MATCH 000557 西部创业 G 运输仓储 score=65.0 RPS=20.6 纯筑底股
+MATCH 000558 天府文旅 N 公共环保 score=61.5 RPS=7.54 纯筑底股
+MATCH 000559 万向钱潮 C 制造业 score=90.94 RPS=86.93 纯筑底股
+MATCH 000560 我爱我家 K 房地产 score=66.5 RPS=18.09 纯筑底股
+MATCH 000561 烽火电子 C 制造业 score=85.0 RPS=5.53 纯筑底股
+MATCH 000563 陕国投Ａ J 金融业 score=85.0 RPS=36.68 纯筑底股
+MATCH 000565 渝三峡Ａ C 制造业 score=72.5 RPS=29.15 纯筑底股
+MATCH 000566 海南海药 C 制造业 score=89.5 RPS=1.01 纯筑底股
+MATCH 000567 海德股份 J 金融业 score=72.46 RPS=47.74 纯筑底股
+MATCH 000568 泸州老窖 C 制造业 score=61.5 RPS=6.53 纯筑底股
+MATCH 000570 苏常柴Ａ C 制造业 score=95.5 RPS=53.27 纯筑底股
+MATCH 000571 新大洲A B 采矿业 score=92.94 RPS=55.28 纯筑底股
+MATCH 000572 海马汽车 C 制造业 score=88.0 RPS=0 纯筑底股
+MATCH 000573 粤宏远Ａ C 制造业 score=101.71 RPS=70.85 纯筑底股
+MATCH 000576 甘化科工 C 制造业 score=85.0 RPS=11.56 纯筑底股
+MATCH 000581 威孚高科 C 制造业 score=89.0 RPS=41.21 纯筑底股
+MATCH 000586 汇源通信 C 制造业 score=103.0 RPS=82.41 纯筑底股
+MATCH 000589 贵州轮胎 C 制造业 score=78.16 RPS=39.2 纯筑底股
+MATCH 000590 古汉医药 C 制造业 score=86.5 RPS=36.18 纯筑底股
+MATCH 000591 太阳能 D 水电煤气 score=76.3 RPS=74.37 纯筑底股
+MATCH 000592 平潭发展 C 制造业 score=66.57 RPS=0.5 纯筑底股
+MATCH 000596 古井贡酒 C 制造业 score=61.5 RPS=2.01 纯筑底股
+MATCH 000597 东北制药 C 制造业 score=87.5 RPS=32.66 纯筑底股
+MATCH 000599 青岛双星 C 制造业 score=92.0 RPS=21.61 纯筑底股
+MATCH 000603 盛达资源 B 采矿业 score=82.0 RPS=48.74 纯筑底股
+MATCH 000605 渤海股份 D 水电煤气 score=64.49 RPS=37.19 纯筑底股
+MATCH 000607 华媒控股 L 商务服务 score=86.5 RPS=26.13 纯筑底股
+MATCH 000612 焦作万方 C 制造业 score=125.0 RPS=81.91 纯筑底股
+MATCH 000617 中油资本 J 金融业 score=89.0 RPS=23.62 纯筑底股
+MATCH 000620 盈新发展 K 房地产 score=99.88 RPS=66.33 纯筑底股
+MATCH 000623 吉林敖东 C 制造业 score=93.0 RPS=47.24 纯筑底股
+MATCH 000625 长安汽车 C 制造业 score=60.0 RPS=4.02 纯筑底股
+MATCH 000628 高新发展 E 建筑业 score=98.5 RPS=84.92 基础过渡态
+MATCH 000629 钒钛股份 C 制造业 score=124.0 RPS=75.38 纯筑底股
+MATCH 000631 顺发恒能 K 房地产 score=68.95 RPS=59.8 纯筑底股
+MATCH 000633 合金投资 C 制造业 score=68.0 RPS=14.57 纯筑底股
+MATCH 000635 英 力 特 C 制造业 score=66.25 RPS=9.05 纯筑底股
+MATCH 000637 茂化实华 C 制造业 score=72.0 RPS=43.72 纯筑底股
+MATCH 000650 仁和药业 C 制造业 score=86.5 RPS=46.23 纯筑底股
+MATCH 000651 格力电器 C 制造业 score=84.96 RPS=51.26 纯筑底股
+MATCH 000652 泰达股份 F 批发零售 score=86.5 RPS=30.65 纯筑底股
+MATCH 000655 金岭矿业 B 采矿业 score=85.0 RPS=24.12 纯筑底股
+MATCH 000659 珠海中富 C 制造业 score=101.5 RPS=72.36 纯筑底股
+MATCH 000663 永安林业 A 农林牧渔 score=72.0 RPS=9.55 纯筑底股
+MATCH 000665 湖北广电 I 信息技术 score=86.5 RPS=16.08 纯筑底股
+MATCH 000670 盈方微 F 批发零售 score=100.5 RPS=79.4 基础过渡态
+MATCH 000676 智度股份 L 商务服务 score=66.5 RPS=5.03 纯筑底股
+MATCH 000678 襄阳轴承 C 制造业 score=65.0 RPS=4.52 纯筑底股
+MATCH 000679 大连友谊 F 批发零售 score=67.5 RPS=56.78 纯筑底股
+MATCH 000680 山推股份 C 制造业 score=77.04 RPS=58.79 纯筑底股
+MATCH 000681 视觉中国 I 信息技术 score=73.0 RPS=69.85 纯筑底股
+MATCH 000682 东方电子 I 信息技术 score=119.46 RPS=74.87 高质量过渡态
+MATCH 000685 中山公用 D 水电煤气 score=94.0 RPS=46.73 纯筑底股
+MATCH 000686 东北证券 J 金融业 score=93.42 RPS=34.67 纯筑底股
+  Pass 2 progress: 200/200, matches=143
+Saved 143 SEPA Stage 1 candidates to batch_results/stage1_0.csv
+Merging current batch results...
+Merged: 1 trend candidates, 5 SEPA Stage 2 candidates, 143 SEPA Stage 1 candidates
+
+Batch 2: offset=200, limit=200
+  0%|          | 0/17 [00:00<?, ?it/s]  6%|▌         | 1/17 [00:00<00:03,  4.55it/s] 12%|█▏        | 2/17 [00:00<00:03,  4.30it/s] 18%|█▊        | 3/17 [00:00<00:03,  4.48it/s] 24%|██▎       | 4/17 [00:00<00:02,  4.54it/s] 29%|██▉       | 5/17 [00:01<00:02,  4.48it/s] 35%|███▌      | 6/17 [00:01<00:02,  4.62it/s] 41%|████      | 7/17 [00:01<00:02,  4.70it/s] 47%|████▋     | 8/17 [00:01<00:01,  4.58it/s] 53%|█████▎    | 9/17 [00:01<00:01,  4.55it/s] 59%|█████▉    | 10/17 [00:02<00:01,  4.45it/s] 65%|██████▍   | 11/17 [00:02<00:01,  4.44it/s] 71%|███████   | 12/17 [00:02<00:01,  4.40it/s] 76%|███████▋  | 13/17 [00:02<00:00,  4.45it/s] 82%|████████▏ | 14/17 [00:03<00:00,  4.36it/s] 88%|████████▊ | 15/17 [00:03<00:00,  4.37it/s] 94%|█████████▍| 16/17 [00:03<00:00,  4.48it/s]100%|██████████| 17/17 [00:03<00:00,  4.44it/s]                                               Using stock pool source: stock_info_a_code_name
+Scanning 200 stocks, offset=200, limit=200...
+Progress: 100/200, matches=0
+Progress: 200/200, matches=0
+Saved 0 candidates to batch_results/trend_200.csv
+  0%|          | 0/17 [00:00<?, ?it/s]  6%|▌         | 1/17 [00:00<00:03,  5.04it/s] 12%|█▏        | 2/17 [00:00<00:03,  4.65it/s] 18%|█▊        | 3/17 [00:00<00:02,  4.71it/s] 24%|██▎       | 4/17 [00:00<00:02,  4.56it/s] 29%|██▉       | 5/17 [00:01<00:02,  4.55it/s] 35%|███▌      | 6/17 [00:01<00:02,  4.34it/s] 41%|████      | 7/17 [00:01<00:02,  4.50it/s] 47%|████▋     | 8/17 [00:01<00:01,  4.61it/s] 53%|█████▎    | 9/17 [00:01<00:01,  4.52it/s] 59%|█████▉    | 10/17 [00:02<00:01,  4.51it/s] 65%|██████▍   | 11/17 [00:02<00:01,  4.31it/s] 71%|███████   | 12/17 [00:02<00:01,  4.40it/s] 76%|███████▋  | 13/17 [00:02<00:00,  4.48it/s] 82%|████████▏ | 14/17 [00:03<00:00,  4.08it/s] 88%|████████▊ | 15/17 [00:03<00:00,  4.01it/s] 94%|█████████▍| 16/17 [00:03<00:00,  4.15it/s]100%|██████████| 17/17 [00:04<00:00,  2.29it/s]                                               Scanning 200 stocks for SEPA Stage 2, offset=200, limit=200, industry mappings=2893...
+MATCH 000697 炼石航空 C 制造业 score=104.6
+MATCH 000700 模塑科技 C 制造业 score=90.8
+MATCH 000725 京东方Ａ C 制造业 score=97.52
+MATCH 000782 恒申新材 C 制造业 score=87.94
+MATCH 000811 冰轮环境 C 制造业 score=110.0
+MATCH 000823 超声电子 C 制造业 score=106.04
+Progress: 100/200, matches=6
+MATCH 000922 佳电股份 C 制造业 score=102.33
+MATCH 000960 锡业股份 C 制造业 score=96.13
+MATCH 000962 东方钽业 C 制造业 score=91.45
+MATCH 000969 安泰科技 C 制造业 score=91.24
+MATCH 000988 华工科技 C 制造业 score=107.79
+MATCH 001210 金房能源 D 水电煤气 score=90.51
+MATCH 001215 千味央厨 C 制造业 score=96.01
+Progress: 200/200, matches=13
+Saved 13 SEPA Stage 2 candidates to batch_results/sepa_200.csv
+  0%|          | 0/17 [00:00<?, ?it/s]  6%|▌         | 1/17 [00:00<00:03,  5.04it/s] 12%|█▏        | 2/17 [00:00<00:03,  4.02it/s] 18%|█▊        | 3/17 [00:00<00:03,  4.31it/s] 24%|██▎       | 4/17 [00:00<00:02,  4.42it/s] 29%|██▉       | 5/17 [00:01<00:02,  4.38it/s] 35%|███▌      | 6/17 [00:01<00:02,  4.56it/s] 41%|████      | 7/17 [00:01<00:02,  4.58it/s] 47%|████▋     | 8/17 [00:01<00:02,  4.45it/s] 53%|█████▎    | 9/17 [00:02<00:01,  4.55it/s] 59%|█████▉    | 10/17 [00:02<00:01,  4.48it/s] 65%|██████▍   | 11/17 [00:02<00:01,  4.53it/s] 71%|███████   | 12/17 [00:02<00:01,  4.59it/s] 76%|███████▋  | 13/17 [00:02<00:00,  4.59it/s] 82%|████████▏ | 14/17 [00:03<00:00,  4.48it/s] 88%|████████▊ | 15/17 [00:03<00:00,  4.56it/s] 94%|█████████▍| 16/17 [00:03<00:00,  4.57it/s]100%|██████████| 17/17 [00:03<00:00,  4.44it/s]                                               Scanning 200 stocks for SEPA Stage 1, offset=200, limit=200, industry mappings=2893...
+Pass 1/2: fetching history and collecting 120d returns...
+  Pass 1 progress: 100/200
+  Pass 1 progress: 200/200
+Computing RPS for 200 stocks...
+Pass 2/2: evaluating Stage 1 candidates with RPS...
+MATCH 000692 惠天热电 D 水电煤气 score=123.0 RPS=86.43 高质量过渡态
+MATCH 000695 滨海能源 C 制造业 score=120.16 RPS=82.91 高质量过渡态
+MATCH 000703 恒逸石化 C 制造业 score=98.15 RPS=96.48 纯筑底股
+MATCH 000705 浙江震元 F 批发零售 score=63.66 RPS=11.56 纯筑底股
+MATCH 000707 双环科技 C 制造业 score=85.0 RPS=20.1 纯筑底股
+MATCH 000708 中信特钢 C 制造业 score=93.5 RPS=58.29 纯筑底股
+MATCH 000709 河钢股份 C 制造业 score=93.0 RPS=55.28 纯筑底股
+MATCH 000710 贝瑞基因 M 科研服务 score=66.5 RPS=12.56 纯筑底股
+MATCH 000713 国投丰乐 A 农林牧渔 score=85.0 RPS=38.19 纯筑底股
+MATCH 000715 中兴商业 F 批发零售 score=88.0 RPS=20.6 纯筑底股
+MATCH 000717 中南股份 C 制造业 score=86.5 RPS=39.7 纯筑底股
+MATCH 000719 中原传媒 R 文化传播 score=116.08 RPS=67.34 纯筑底股
+MATCH 000720 新能泰山 C 制造业 score=76.5 RPS=77.89 纯筑底股
+MATCH 000721 西安饮食 H 住宿餐饮 score=86.5 RPS=1.51 纯筑底股
+MATCH 000723 美锦能源 C 制造业 score=87.5 RPS=27.64 纯筑底股
+MATCH 000726 鲁  泰Ａ C 制造业 score=88.0 RPS=37.69 纯筑底股
+MATCH 000728 国元证券 J 金融业 score=60.0 RPS=42.71 纯筑底股
+MATCH 000731 四川美丰 C 制造业 score=85.0 RPS=42.21 纯筑底股
+MATCH 000735 罗 牛 山 A 农林牧渔 score=90.5 RPS=0 纯筑底股
+MATCH 000737 北方铜业 C 制造业 score=130.5 RPS=75.38 纯筑底股
+MATCH 000738 航发控制 C 制造业 score=92.0 RPS=60.8 纯筑底股
+MATCH 000739 普洛药业 C 制造业 score=121.98 RPS=69.85 纯筑底股
+MATCH 000750 国海证券 J 金融业 score=63.0 RPS=47.24 纯筑底股
+MATCH 000751 锌业股份 C 制造业 score=104.5 RPS=92.46 纯筑底股
+MATCH 000753 漳州发展 F 批发零售 score=69.0 RPS=4.02 纯筑底股
+MATCH 000755 山西高速 G 运输仓储 score=67.0 RPS=51.76 纯筑底股
+MATCH 000756 新华制药 C 制造业 score=85.0 RPS=22.61 纯筑底股
+MATCH 000758 中色股份 B 采矿业 score=170.5 RPS=84.42 高质量过渡态
+MATCH 000762 西藏矿业 B 采矿业 score=165.0 RPS=85.93 高质量过渡态
+MATCH 000766 通化金马 C 制造业 score=95.88 RPS=51.26 纯筑底股
+MATCH 000768 中航西飞 C 制造业 score=86.5 RPS=44.22 纯筑底股
+MATCH 000776 广发证券 J 金融业 score=90.45 RPS=63.32 纯筑底股
+MATCH 000777 中核科技 C 制造业 score=68.0 RPS=61.81 纯筑底股
+MATCH 000778 新兴铸管 C 制造业 score=97.27 RPS=65.83 纯筑底股
+MATCH 000779 甘咨询 M 科研服务 score=91.5 RPS=57.79 纯筑底股
+MATCH 000786 北新建材 C 制造业 score=89.5 RPS=35.18 纯筑底股
+MATCH 000788 北大医药 C 制造业 score=89.5 RPS=46.23 纯筑底股
+MATCH 000789 万年青 C 制造业 score=85.0 RPS=29.65 纯筑底股
+MATCH 000790 华神科技 C 制造业 score=93.1 RPS=62.31 纯筑底股
+MATCH 000792 盐湖股份 C 制造业 score=126.5 RPS=83.92 纯筑底股
+MATCH 000795 英洛华 C 制造业 score=93.0 RPS=69.35 纯筑底股
+MATCH 000796 凯撒旅业 L 商务服务 score=87.5 RPS=3.02 纯筑底股
+MATCH 000797 中国武夷 K 房地产 score=88.0 RPS=6.53 纯筑底股
+MATCH 000798 中水渔业 A 农林牧渔 score=91.5 RPS=8.54 纯筑底股
+MATCH 000800 一汽解放 C 制造业 score=69.0 RPS=54.77 纯筑底股
+MATCH 000801 四川九洲 C 制造业 score=85.0 RPS=9.05 纯筑底股
+MATCH 000803 山高环能 N 公共环保 score=118.5 RPS=72.86 纯筑底股
+MATCH 000809 和展能源 C 制造业 score=100.5 RPS=80.9 基础过渡态
+MATCH 000810 创维数字 C 制造业 score=80.25 RPS=76.88 纯筑底股
+MATCH 000812 陕西金叶 C 制造业 score=86.5 RPS=7.04 纯筑底股
+MATCH 000815 美利云 C 制造业 score=102.5 RPS=94.97 基础过渡态
+MATCH 000816 智慧农业 C 制造业 score=90.5 RPS=4.52 纯筑底股
+MATCH 000818 航锦科技 C 制造业 score=66.5 RPS=7.54 纯筑底股
+MATCH 000819 岳阳兴长 C 制造业 score=69.0 RPS=45.73 纯筑底股
+MATCH 000822 山东海化 C 制造业 score=89.0 RPS=45.23 纯筑底股
+MATCH 000825 太钢不锈 C 制造业 score=89.5 RPS=23.12 纯筑底股
+MATCH 000828 东莞控股 G 运输仓储 score=93.44 RPS=54.27 纯筑底股
+MATCH 000829 天音控股 F 批发零售 score=67.89 RPS=19.1 纯筑底股
+MATCH 000830 鲁西化工 C 制造业 score=95.0 RPS=43.72 纯筑底股
+MATCH 000833 粤桂股份 S 综合 score=75.91 RPS=85.43 纯筑底股
+MATCH 000837 秦川机床 C 制造业 score=90.5 RPS=70.35 纯筑底股
+MATCH 000839 国安股份 I 信息技术 score=99.5 RPS=75.88 纯筑底股
+MATCH 000848 承德露露 C 制造业 score=91.91 RPS=59.8 纯筑底股
+MATCH 000850 华茂股份 C 制造业 score=90.5 RPS=25.63 纯筑底股
+MATCH 000852 石化机械 C 制造业 score=88.0 RPS=26.13 纯筑底股
+MATCH 000856 冀东装备 C 制造业 score=65.0 RPS=31.16 纯筑底股
+MATCH 000858 五 粮 液 C 制造业 score=61.5 RPS=9.55 纯筑底股
+MATCH 000860 顺鑫农业 C 制造业 score=61.5 RPS=6.03 纯筑底股
+MATCH 000863 三湘印象 K 房地产 score=78.62 RPS=41.71 纯筑底股
+MATCH 000868 安凯客车 C 制造业 score=64.0 RPS=13.07 纯筑底股
+  Pass 2 progress: 100/200, matches=70
+MATCH 000869 张  裕Ａ C 制造业 score=86.5 RPS=36.18 纯筑底股
+MATCH 000877 天山股份 C 制造业 score=85.0 RPS=18.09 纯筑底股
+MATCH 000878 云南铜业 C 制造业 score=121.0 RPS=79.9 纯筑底股
+MATCH 000881 中广核技 C 制造业 score=63.0 RPS=30.65 纯筑底股
+MATCH 000882 华联股份 L 商务服务 score=65.06 RPS=3.52 纯筑底股
+MATCH 000883 湖北能源 D 水电煤气 score=96.51 RPS=66.83 纯筑底股
+MATCH 000885 城发环境 N 公共环保 score=112.3 RPS=62.81 纯筑底股
+MATCH 000886 海南高速 G 运输仓储 score=87.5 RPS=2.51 纯筑底股
+MATCH 000887 中鼎股份 C 制造业 score=96.7 RPS=70.85 纯筑底股
+MATCH 000888 峨眉山Ａ N 公共环保 score=89.0 RPS=19.6 纯筑底股
+MATCH 000889 中嘉博创 I 信息技术 score=121.11 RPS=78.89 基础过渡态
+MATCH 000890 法尔胜 C 制造业 score=70.34 RPS=87.44 纯筑底股
+MATCH 000895 双汇发展 C 制造业 score=80.0 RPS=48.24 纯筑底股
+MATCH 000897 津滨发展 K 房地产 score=86.5 RPS=23.62 纯筑底股
+MATCH 000898 鞍钢股份 C 制造业 score=85.0 RPS=35.68 纯筑底股
+MATCH 000899 赣能股份 D 水电煤气 score=77.5 RPS=82.41 纯筑底股
+MATCH 000900 现代投资 G 运输仓储 score=89.76 RPS=56.28 纯筑底股
+MATCH 000901 航天科技 C 制造业 score=94.0 RPS=14.07 纯筑底股
+MATCH 000902 新洋丰 C 制造业 score=69.65 RPS=32.66 纯筑底股
+MATCH 000905 厦门港务 F 批发零售 score=97.5 RPS=5.53 纯筑底股
+MATCH 000906 浙商中拓 L 商务服务 score=72.59 RPS=58.79 纯筑底股
+MATCH 000908 景峰医药 C 制造业 score=93.62 RPS=77.39 纯筑底股
+MATCH 000912 泸天化 C 制造业 score=88.0 RPS=36.68 纯筑底股
+MATCH 000913 钱江摩托 C 制造业 score=85.0 RPS=31.66 纯筑底股
+MATCH 000915 华特达因 C 制造业 score=86.5 RPS=34.67 纯筑底股
+MATCH 000917 电广传媒 I 信息技术 score=68.0 RPS=32.16 纯筑底股
+MATCH 000919 金陵药业 C 制造业 score=89.5 RPS=52.26 纯筑底股
+MATCH 000923 河钢资源 B 采矿业 score=91.0 RPS=25.13 纯筑底股
+MATCH 000925 众合科技 C 制造业 score=92.01 RPS=57.29 纯筑底股
+MATCH 000927 中国铁物 L 商务服务 score=88.0 RPS=60.3 纯筑底股
+MATCH 000928 中钢国际 E 建筑业 score=92.5 RPS=53.77 纯筑底股
+MATCH 000929 兰州黄河 C 制造业 score=96.9 RPS=78.39 基础过渡态
+MATCH 000930 中粮科技 C 制造业 score=88.0 RPS=34.17 纯筑底股
+MATCH 000931 中 关 村 C 制造业 score=85.0 RPS=50.75 纯筑底股
+MATCH 000932 华菱钢铁 C 制造业 score=60.0 RPS=8.04 纯筑底股
+MATCH 000935 四川双马 C 制造业 score=96.0 RPS=72.36 基础过渡态
+MATCH 000936 华西股份 C 制造业 score=70.5 RPS=13.57 纯筑底股
+MATCH 000937 冀中能源 B 采矿业 score=63.0 RPS=59.3 纯筑底股
+MATCH 000938 紫光股份 C 制造业 score=83.0 RPS=81.91 纯筑底股
+MATCH 000948 南天信息 I 信息技术 score=85.0 RPS=17.59 纯筑底股
+MATCH 000949 新乡化纤 C 制造业 score=111.02 RPS=88.94 纯筑底股
+MATCH 000950 重药控股 F 批发零售 score=101.97 RPS=30.15 纯筑底股
+MATCH 000951 中国重汽 C 制造业 score=148.9 RPS=89.45 高质量过渡态
+MATCH 000952 广济药业 C 制造业 score=72.0 RPS=37.19 纯筑底股
+MATCH 000953 中哲精化 C 制造业 score=65.0 RPS=16.08 纯筑底股
+MATCH 000955 欣龙控股 C 制造业 score=71.14 RPS=28.64 纯筑底股
+MATCH 000957 中通客车 C 制造业 score=89.5 RPS=50.25 纯筑底股
+MATCH 000958 电投产融 D 水电煤气 score=68.0 RPS=53.27 纯筑底股
+MATCH 000959 首钢股份 C 制造业 score=63.71 RPS=15.58 纯筑底股
+MATCH 000963 华东医药 F 批发零售 score=66.5 RPS=16.58 纯筑底股
+MATCH 000965 天保基建 K 房地产 score=86.5 RPS=33.67 纯筑底股
+MATCH 000966 长源电力 D 水电煤气 score=76.5 RPS=71.86 纯筑底股
+MATCH 000968 蓝焰控股 B 采矿业 score=78.5 RPS=68.34 纯筑底股
+MATCH 000973 佛塑科技 C 制造业 score=131.83 RPS=91.96 高质量过渡态
+MATCH 000977 浪潮信息 C 制造业 score=120.35 RPS=74.87 高质量过渡态
+MATCH 000978 桂林旅游 N 公共环保 score=90.5 RPS=41.21 纯筑底股
+MATCH 000981 山子高科 C 制造业 score=75.5 RPS=73.37 纯筑底股
+MATCH 000985 大庆华科 C 制造业 score=89.5 RPS=40.2 纯筑底股
+MATCH 000987 越秀资本 J 金融业 score=99.0 RPS=67.84 纯筑底股
+MATCH 000989 九芝堂 C 制造业 score=92.5 RPS=56.78 纯筑底股
+MATCH 000990 诚志股份 C 制造业 score=121.0 RPS=79.4 纯筑底股
+MATCH 000998 隆平高科 A 农林牧渔 score=85.0 RPS=47.74 纯筑底股
+MATCH 000999 华润三九 C 制造业 score=89.0 RPS=44.72 纯筑底股
+MATCH 001201 东瑞股份 A 农林牧渔 score=85.0 RPS=17.09 纯筑底股
+MATCH 001202 炬申股份 G 运输仓储 score=91.0 RPS=61.31 纯筑底股
+MATCH 001205 盛航股份 G 运输仓储 score=67.0 RPS=38.69 纯筑底股
+MATCH 001206 依依股份 C 制造业 score=60.0 RPS=1.01 纯筑底股
+MATCH 001207 联科科技 C 制造业 score=93.72 RPS=68.84 纯筑底股
+MATCH 001208 华菱线缆 C 制造业 score=102.0 RPS=26.63 纯筑底股
+MATCH 001209 洪兴股份 C 制造业 score=75.0 RPS=49.75 纯筑底股
+MATCH 001212 中旗新材 C 制造业 score=76.5 RPS=81.41 纯筑底股
+MATCH 001213 中铁特货 G 运输仓储 score=86.5 RPS=46.73 纯筑底股
+MATCH 001216 华瓷股份 C 制造业 score=123.0 RPS=73.87 纯筑底股
+  Pass 2 progress: 200/200, matches=143
+Saved 143 SEPA Stage 1 candidates to batch_results/stage1_200.csv
+Merging current batch results...
+Merged: 1 trend candidates, 9 SEPA Stage 2 candidates, 286 SEPA Stage 1 candidates
+
+Batch 3: offset=400, limit=200
+  0%|          | 0/17 [00:00<?, ?it/s]  6%|▌         | 1/17 [00:00<00:03,  4.77it/s] 12%|█▏        | 2/17 [00:00<00:03,  4.25it/s] 18%|█▊        | 3/17 [00:00<00:03,  4.38it/s] 24%|██▎       | 4/17 [00:00<00:03,  4.26it/s] 29%|██▉       | 5/17 [00:01<00:04,  2.40it/s] 35%|███▌      | 6/17 [00:01<00:03,  2.89it/s] 41%|████      | 7/17 [00:02<00:03,  3.23it/s] 47%|████▋     | 8/17 [00:02<00:02,  3.59it/s] 53%|█████▎    | 9/17 [00:02<00:02,  3.74it/s] 59%|█████▉    | 10/17 [00:02<00:01,  3.83it/s] 65%|██████▍   | 11/17 [00:03<00:02,  2.64it/s] 71%|███████   | 12/17 [00:03<00:01,  3.05it/s] 76%|███████▋  | 13/17 [00:03<00:01,  3.40it/s] 82%|████████▏ | 14/17 [00:04<00:00,  3.65it/s] 88%|████████▊ | 15/17 [00:04<00:00,  3.81it/s] 94%|█████████▍| 16/17 [00:04<00:00,  3.90it/s]100%|██████████| 17/17 [00:04<00:00,  4.15it/s]                                               Using stock pool source: stock_info_a_code_name
+Scanning 200 stocks, offset=400, limit=200...
+MATCH 001226 拓山重工 score=102.53
+MATCH 001287 中电港 score=97.07
+MATCH 001326 联域股份 score=93.55
+Progress: 100/200, matches=3
+Progress: 200/200, matches=3
+Saved 3 candidates to batch_results/trend_400.csv
+  0%|          | 0/17 [00:00<?, ?it/s]  6%|▌         | 1/17 [00:00<00:03,  4.46it/s] 12%|█▏        | 2/17 [00:00<00:03,  4.36it/s] 18%|█▊        | 3/17 [00:00<00:03,  4.37it/s] 24%|██▎       | 4/17 [00:00<00:02,  4.35it/s] 29%|██▉       | 5/17 [00:01<00:02,  4.46it/s] 35%|███▌      | 6/17 [00:01<00:02,  4.46it/s] 41%|████      | 7/17 [00:01<00:02,  4.34it/s] 47%|████▋     | 8/17 [00:01<00:02,  4.35it/s] 53%|█████▎    | 9/17 [00:02<00:01,  4.28it/s] 59%|█████▉    | 10/17 [00:02<00:01,  4.26it/s] 65%|██████▍   | 11/17 [00:02<00:01,  4.23it/s] 71%|███████   | 12/17 [00:02<00:01,  4.24it/s] 76%|███████▋  | 13/17 [00:02<00:00,  4.39it/s] 82%|████████▏ | 14/17 [00:03<00:00,  4.44it/s] 88%|████████▊ | 15/17 [00:03<00:00,  4.46it/s] 94%|█████████▍| 16/17 [00:03<00:00,  4.46it/s]100%|██████████| 17/17 [00:03<00:00,  4.41it/s]                                               Scanning 200 stocks for SEPA Stage 2, offset=400, limit=200, industry mappings=2893...
+MATCH 001223 欧克科技 C 制造业 score=96.8
+MATCH 001226 拓山重工 C 制造业 score=122.25
+MATCH 001259 利仁科技 C 制造业 score=93.0
+MATCH 001266 宏英智能 C 制造业 score=102.83
+MATCH 001267 汇绿生态 C 制造业 score=83.33
+MATCH 001268 联合精密 C 制造业 score=87.71
+MATCH 001287 中电港 F 批发零售 score=117.31
+MATCH 001301 尚太科技 C 制造业 score=80.86
+MATCH 001309 德明利 C 制造业 score=116.69
+MATCH 001326 联域股份 C 制造业 score=120.85
+MATCH 001331 胜通能源 D 水电煤气 score=106.17
+MATCH 001332 锡装股份 C 制造业 score=94.34
+MATCH 001339 智微智能 C 制造业 score=110.0
+MATCH 001359 平安电工 C 制造业 score=108.84
+MATCH 001389 广合科技 C 制造业 score=112.48
+Progress: 100/200, matches=15
+MATCH 001896 豫能控股 D 水电煤气 score=82.57
+MATCH 002008 大族激光 C 制造业 score=99.32
+MATCH 002046 国机精工 C 制造业 score=96.21
+MATCH 002051 中工国际 E 建筑业 score=94.12
+MATCH 002056 横店东磁 C 制造业 score=91.78
+MATCH 002072 凯瑞德 F 批发零售 score=111.73
+MATCH 002079 苏州固锝 C 制造业 score=109.2
+MATCH 002080 中材科技 C 制造业 score=100.28
+Progress: 200/200, matches=23
+Saved 23 SEPA Stage 2 candidates to batch_results/sepa_400.csv
+  0%|          | 0/17 [00:00<?, ?it/s]  6%|▌         | 1/17 [00:00<00:03,  4.12it/s] 12%|█▏        | 2/17 [00:00<00:03,  4.44it/s] 18%|█▊        | 3/17 [00:00<00:03,  4.46it/s] 24%|██▎       | 4/17 [00:00<00:02,  4.66it/s] 29%|██▉       | 5/17 [00:01<00:02,  4.60it/s] 35%|███▌      | 6/17 [00:01<00:02,  4.56it/s] 41%|████      | 7/17 [00:01<00:02,  4.43it/s] 47%|████▋     | 8/17 [00:01<00:02,  4.40it/s] 53%|█████▎    | 9/17 [00:02<00:01,  4.45it/s] 59%|█████▉    | 10/17 [00:02<00:01,  4.34it/s] 65%|██████▍   | 11/17 [00:02<00:01,  4.36it/s] 71%|███████   | 12/17 [00:02<00:01,  4.30it/s] 76%|███████▋  | 13/17 [00:02<00:00,  4.26it/s] 82%|████████▏ | 14/17 [00:03<00:00,  4.37it/s] 88%|████████▊ | 15/17 [00:03<00:00,  3.66it/s] 94%|█████████▍| 16/17 [00:03<00:00,  3.93it/s]100%|██████████| 17/17 [00:03<00:00,  4.14it/s]                                               Scanning 200 stocks for SEPA Stage 1, offset=400, limit=200, industry mappings=2893...
+Pass 1/2: fetching history and collecting 120d returns...
+  Pass 1 progress: 100/200
+  Pass 1 progress: 200/200
+Computing RPS for 185 stocks...
+Pass 2/2: evaluating Stage 1 candidates with RPS...
+MATCH 001217 华尔泰 C 制造业 score=88.0 RPS=14.13 纯筑底股
+MATCH 001218 丽臣实业 C 制造业 score=138.9 RPS=76.09 高质量过渡态
+MATCH 001219 青岛食品 C 制造业 score=92.5 RPS=44.02 纯筑底股
+MATCH 001222 源飞宠物 C 制造业 score=62.5 RPS=0.54 纯筑底股
+MATCH 001227 兰州银行 J 金融业 score=90.36 RPS=52.72 纯筑底股
+MATCH 001228 永泰运 L 商务服务 score=101.5 RPS=72.28 纯筑底股
+MATCH 001231 农心科技 C 制造业 score=75.5 RPS=54.89 纯筑底股
+MATCH 001234 泰慕士 C 制造业 score=92.5 RPS=25.54 纯筑底股
+MATCH 001236 弘业期货 J 金融业 score=67.5 RPS=9.78 纯筑底股
+MATCH 001238 浙江正特 C 制造业 score=61.5 RPS=34.24 纯筑底股
+MATCH 001239 永达股份 C 制造业 score=65.76 RPS=55.98 纯筑底股
+MATCH 001255 博菲电气 C 制造业 score=68.0 RPS=30.98 纯筑底股
+MATCH 001260 坤泰股份 C 制造业 score=68.0 RPS=46.74 纯筑底股
+MATCH 001269 欧晶科技 C 制造业 score=64.5 RPS=65.22 纯筑底股
+MATCH 001277 速达股份 C 制造业 score=90.0 RPS=21.2 纯筑底股
+MATCH 001282 三联锻造 C 制造业 score=101.5 RPS=74.46 纯筑底股
+MATCH 001283 豪鹏科技 C 制造业 score=72.0 RPS=64.13 纯筑底股
+MATCH 001286 陕西能源 D 水电煤气 score=123.5 RPS=71.74 高质量过渡态
+MATCH 001288 运机集团 C 制造业 score=77.0 RPS=37.5 纯筑底股
+MATCH 001289 龙源电力 D 水电煤气 score=95.5 RPS=73.91 纯筑底股
+MATCH 001296 长江材料 C 制造业 score=88.0 RPS=16.3 纯筑底股
+MATCH 001298 好上好 F 批发零售 score=96.5 RPS=69.57 纯筑底股
+MATCH 001299 美能能源 D 水电煤气 score=96.0 RPS=79.89 基础过渡态
+MATCH 001308 康冠科技 C 制造业 score=88.78 RPS=69.02 纯筑底股
+MATCH 001311 多利科技 C 制造业 score=75.0 RPS=24.46 纯筑底股
+MATCH 001313 粤海饲料 C 制造业 score=73.5 RPS=41.85 纯筑底股
+MATCH 001316 润贝航科 F 批发零售 score=103.99 RPS=90.76 基础过渡态
+MATCH 001317 三羊马 G 运输仓储 score=74.98 RPS=42.93 纯筑底股
+MATCH 001318 阳光乳业 C 制造业 score=85.0 RPS=2.72 纯筑底股
+MATCH 001319 铭科精技 C 制造业 score=60.0 RPS=51.09 纯筑底股
+MATCH 001322 箭牌家居 C 制造业 score=60.71 RPS=10.33 纯筑底股
+MATCH 001323 慕思股份 C 制造业 score=60.35 RPS=13.04 纯筑底股
+MATCH 001324 长青科技 C 制造业 score=93.85 RPS=63.59 纯筑底股
+MATCH 001328 登康口腔 C 制造业 score=63.5 RPS=15.22 纯筑底股
+MATCH 001330 博纳影业 R 文化传播 score=78.5 RPS=2.17 纯筑底股
+MATCH 001333 光华股份 C 制造业 score=71.0 RPS=51.63 纯筑底股
+MATCH 001335 信凯科技 F 批发零售 score=148.0 RPS=60.87 基础过渡态
+MATCH 001336 楚环科技 C 制造业 score=88.39 RPS=66.85 纯筑底股
+MATCH 001337 四川黄金 B 采矿业 score=80.9 RPS=90.22 纯筑底股
+MATCH 001338 永顺泰 C 制造业 score=68.0 RPS=20.65 纯筑底股
+MATCH 001356 富岭股份 C 制造业 score=65.51 RPS=4.89 纯筑底股
+MATCH 001358 兴欣新材 C 制造业 score=72.75 RPS=61.41 纯筑底股
+MATCH 001367 海森药业 C 制造业 score=86.5 RPS=55.43 纯筑底股
+MATCH 001368 通达创智 C 制造业 score=78.0 RPS=50.0 纯筑底股
+MATCH 001373 翔腾新材 C 制造业 score=82.7 RPS=83.15 纯筑底股
+MATCH 001379 腾达科技 C 制造业 score=72.0 RPS=15.76 纯筑底股
+MATCH 001380 华纬科技 C 制造业 score=65.0 RPS=21.74 纯筑底股
+MATCH 001382 新亚电缆 C 制造业 score=109.5 RPS=57.07 纯筑底股
+MATCH 001387 雪祺电气 C 制造业 score=69.06 RPS=45.11 纯筑底股
+MATCH 001390 古麒绒材 C 制造业 score=66.0 RPS=20.11 纯筑底股
+MATCH 001391 国货航 G 运输仓储 score=85.0 RPS=10.87 纯筑底股
+MATCH 001395 亚联机械 C 制造业 score=86.5 RPS=18.48 纯筑底股
+MATCH 001400 江顺科技 C 制造业 score=69.07 RPS=96.2 纯筑底股
+MATCH 001872 招商港口 G 运输仓储 score=123.17 RPS=57.61 纯筑底股
+  Pass 2 progress: 100/200, matches=54
+MATCH 001914 招商积余 K 房地产 score=89.0 RPS=28.8 纯筑底股
+MATCH 001965 招商公路 G 运输仓储 score=117.82 RPS=60.33 纯筑底股
+MATCH 002001 新 和 成 C 制造业 score=101.44 RPS=79.35 纯筑底股
+MATCH 002003 伟星股份 C 制造业 score=65.5 RPS=35.87 纯筑底股
+MATCH 002004 华邦健康 C 制造业 score=92.5 RPS=53.26 纯筑底股
+MATCH 002006 精工科技 C 制造业 score=65.0 RPS=12.5 纯筑底股
+MATCH 002007 华兰生物 C 制造业 score=86.5 RPS=40.76 纯筑底股
+MATCH 002009 天奇股份 C 制造业 score=101.5 RPS=86.41 纯筑底股
+MATCH 002010 传化智联 L 商务服务 score=86.5 RPS=39.13 纯筑底股
+MATCH 002014 永新股份 C 制造业 score=95.1 RPS=41.3 纯筑底股
+MATCH 002016 世荣兆业 K 房地产 score=62.86 RPS=14.67 纯筑底股
+MATCH 002017 东信和平 C 制造业 score=94.5 RPS=16.85 纯筑底股
+MATCH 002019 亿帆医药 C 制造业 score=86.5 RPS=32.07 纯筑底股
+MATCH 002020 京新药业 C 制造业 score=85.0 RPS=3.8 纯筑底股
+MATCH 002021 中捷资源 C 制造业 score=74.0 RPS=63.04 纯筑底股
+MATCH 002022 科华生物 C 制造业 score=69.0 RPS=31.52 纯筑底股
+MATCH 002023 海特高新 C 制造业 score=102.0 RPS=59.78 纯筑底股
+MATCH 002025 航天电器 C 制造业 score=128.0 RPS=84.78 高质量过渡态
+MATCH 002026 山东威达 C 制造业 score=89.0 RPS=42.39 纯筑底股
+MATCH 002027 分众传媒 L 商务服务 score=64.0 RPS=11.41 纯筑底股
+MATCH 002029 七 匹 狼 C 制造业 score=96.5 RPS=19.02 纯筑底股
+MATCH 002032 苏 泊 尔 C 制造业 score=72.41 RPS=47.83 纯筑底股
+MATCH 002033 丽江股份 N 公共环保 score=127.5 RPS=58.7 纯筑底股
+MATCH 002034 旺能环境 D 水电煤气 score=73.5 RPS=70.65 纯筑底股
+MATCH 002035 华帝股份 C 制造业 score=89.0 RPS=28.26 纯筑底股
+MATCH 002037 保利联合 C 制造业 score=74.78 RPS=11.96 纯筑底股
+MATCH 002038 双鹭药业 C 制造业 score=85.0 RPS=7.61 纯筑底股
+MATCH 002039 黔源电力 D 水电煤气 score=101.79 RPS=71.2 基础过渡态
+MATCH 002040 南 京 港 G 运输仓储 score=90.0 RPS=36.41 纯筑底股
+MATCH 002041 登海种业 A 农林牧渔 score=93.0 RPS=50.54 纯筑底股
+MATCH 002042 华孚时尚 C 制造业 score=73.0 RPS=52.17 纯筑底股
+MATCH 002044 美年健康 Q 卫生 score=94.0 RPS=75.54 纯筑底股
+MATCH 002048 宁波华翔 C 制造业 score=70.0 RPS=65.76 纯筑底股
+MATCH 002049 紫光国微 C 制造业 score=79.11 RPS=68.48 纯筑底股
+MATCH 002050 三花智控 C 制造业 score=75.0 RPS=70.11 纯筑底股
+MATCH 002052 同洲电子 C 制造业 score=65.0 RPS=7.07 纯筑底股
+MATCH 002054 德美化工 C 制造业 score=97.04 RPS=64.67 纯筑底股
+MATCH 002058 威尔泰 C 制造业 score=76.66 RPS=72.83 纯筑底股
+MATCH 002059 云南旅游 N 公共环保 score=89.0 RPS=26.09 纯筑底股
+MATCH 002060 广东建工 E 建筑业 score=88.0 RPS=53.8 纯筑底股
+MATCH 002061 浙江交科 E 建筑业 score=88.0 RPS=44.57 纯筑底股
+MATCH 002063 远光软件 I 信息技术 score=88.5 RPS=43.48 纯筑底股
+MATCH 002064 华峰化学 C 制造业 score=98.5 RPS=58.15 纯筑底股
+MATCH 002065 东华软件 I 信息技术 score=85.0 RPS=27.72 纯筑底股
+MATCH 002066 瑞泰科技 C 制造业 score=72.97 RPS=67.39 纯筑底股
+MATCH 002068 黑猫股份 C 制造业 score=95.78 RPS=78.8 纯筑底股
+MATCH 002069 獐子岛 A 农林牧渔 score=86.5 RPS=29.89 纯筑底股
+MATCH 002073 软控股份 C 制造业 score=85.0 RPS=4.35 纯筑底股
+MATCH 002074 国轩高科 C 制造业 score=70.5 RPS=26.63 纯筑底股
+MATCH 002075 沙钢股份 C 制造业 score=63.39 RPS=5.43 纯筑底股
+MATCH 002078 太阳纸业 C 制造业 score=68.08 RPS=33.15 纯筑底股
+MATCH 002083 孚日股份 C 制造业 score=79.81 RPS=61.96 纯筑底股
+MATCH 002084 海鸥住工 C 制造业 score=86.5 RPS=45.65 纯筑底股
+MATCH 002085 万丰奥威 C 制造业 score=61.5 RPS=36.96 纯筑底股
+MATCH 002086 东方海洋 A 农林牧渔 score=86.5 RPS=17.93 纯筑底股
+MATCH 002088 鲁阳节能 C 制造业 score=85.0 RPS=32.61 纯筑底股
+MATCH 002090 金智科技 C 制造业 score=95.0 RPS=25.0 纯筑底股
+MATCH 002091 江苏国泰 F 批发零售 score=94.0 RPS=48.91 纯筑底股
+MATCH 002092 中泰化学 C 制造业 score=70.5 RPS=47.28 纯筑底股
+MATCH 002093 国脉科技 I 信息技术 score=85.0 RPS=1.09 纯筑底股
+MATCH 002094 青岛金王 C 制造业 score=91.5 RPS=3.26 纯筑底股
+MATCH 002095 生 意 宝 I 信息技术 score=86.5 RPS=22.83 纯筑底股
+MATCH 002097 山河智能 C 制造业 score=74.02 RPS=5.98 纯筑底股
+MATCH 002098 浔兴股份 C 制造业 score=88.0 RPS=8.15 纯筑底股
+MATCH 002099 海翔药业 C 制造业 score=74.5 RPS=38.59 纯筑底股
+MATCH 002100 天康生物 C 制造业 score=85.0 RPS=34.78 纯筑底股
+MATCH 002101 广东鸿图 C 制造业 score=85.0 RPS=8.7 纯筑底股
+MATCH 002103 广博股份 C 制造业 score=85.0 RPS=6.52 纯筑底股
+MATCH 002104 恒宝股份 C 制造业 score=54.84 RPS=0 纯筑底股
+MATCH 002105 信隆健康 C 制造业 score=66.5 RPS=17.39 纯筑底股
+MATCH 002107 沃华医药 C 制造业 score=95.5 RPS=62.5 纯筑底股
+MATCH 002108 沧州明珠 C 制造业 score=121.5 RPS=56.52 纯筑底股
+MATCH 002110 三钢闽光 C 制造业 score=85.0 RPS=9.24 纯筑底股
+  Pass 2 progress: 200/200, matches=127
+Saved 127 SEPA Stage 1 candidates to batch_results/stage1_400.csv
+Merging current batch results...
+Merged: 4 trend candidates, 16 SEPA Stage 2 candidates, 413 SEPA Stage 1 candidates
+
+Batch 4: offset=600, limit=200
+  0%|          | 0/17 [00:00<?, ?it/s]  6%|▌         | 1/17 [00:00<00:03,  4.55it/s] 12%|█▏        | 2/17 [00:00<00:03,  4.74it/s] 18%|█▊        | 3/17 [00:00<00:03,  4.63it/s] 24%|██▎       | 4/17 [00:00<00:02,  4.52it/s] 29%|██▉       | 5/17 [00:01<00:02,  4.45it/s] 35%|███▌      | 6/17 [00:01<00:02,  4.36it/s] 41%|████      | 7/17 [00:01<00:02,  4.14it/s] 47%|████▋     | 8/17 [00:01<00:02,  4.21it/s] 53%|█████▎    | 9/17 [00:02<00:01,  4.28it/s] 59%|█████▉    | 10/17 [00:02<00:01,  4.18it/s] 65%|██████▍   | 11/17 [00:02<00:01,  4.36it/s] 71%|███████   | 12/17 [00:02<00:01,  4.24it/s] 76%|███████▋  | 13/17 [00:03<00:00,  4.30it/s] 82%|████████▏ | 14/17 [00:03<00:00,  4.32it/s] 88%|████████▊ | 15/17 [00:03<00:00,  4.41it/s] 94%|█████████▍| 16/17 [00:03<00:00,  3.38it/s]100%|██████████| 17/17 [00:04<00:00,  3.67it/s]                                               Using stock pool source: stock_info_a_code_name
+Scanning 200 stocks, offset=600, limit=200...
+Progress: 100/200, matches=0
+Progress: 200/200, matches=0
+Saved 0 candidates to batch_results/trend_600.csv
+  0%|          | 0/17 [00:00<?, ?it/s]  6%|▌         | 1/17 [00:00<00:02,  6.33it/s] 12%|█▏        | 2/17 [00:00<00:02,  5.96it/s] 18%|█▊        | 3/17 [00:00<00:02,  5.77it/s] 24%|██▎       | 4/17 [00:00<00:02,  5.75it/s] 29%|██▉       | 5/17 [00:00<00:02,  5.53it/s] 35%|███▌      | 6/17 [00:01<00:02,  4.82it/s] 41%|████      | 7/17 [00:01<00:01,  5.01it/s] 47%|████▋     | 8/17 [00:01<00:01,  5.16it/s] 53%|█████▎    | 9/17 [00:01<00:01,  5.22it/s] 59%|█████▉    | 10/17 [00:01<00:01,  5.37it/s] 65%|██████▍   | 11/17 [00:02<00:01,  5.39it/s] 71%|███████   | 12/17 [00:02<00:00,  5.45it/s] 76%|███████▋  | 13/17 [00:02<00:00,  5.46it/s] 82%|████████▏ | 14/17 [00:02<00:00,  5.38it/s] 88%|████████▊ | 15/17 [00:02<00:00,  5.36it/s] 94%|█████████▍| 16/17 [00:02<00:00,  5.53it/s]100%|██████████| 17/17 [00:03<00:00,  5.59it/s]                                               Scanning 200 stocks for SEPA Stage 2, offset=600, limit=200, industry mappings=2893...
+MATCH 002119 康强电子 C 制造业 score=112.43
+MATCH 002125 湘潭电化 C 制造业 score=109.66
+MATCH 002126 银轮股份 C 制造业 score=90.21
+MATCH 002132 恒星科技 C 制造业 score=89.14
+MATCH 002134 天津普林 C 制造业 score=93.08
+MATCH 002138 顺络电子 C 制造业 score=98.5
+MATCH 002156 通富微电 C 制造业 score=94.0
+MATCH 002158 汉钟精机 C 制造业 score=118.13
+MATCH 002185 华天科技 C 制造业 score=94.42
+MATCH 002192 融捷股份 B 采矿业 score=95.0
+MATCH 002203 海亮股份 C 制造业 score=113.0
+MATCH 002213 大为股份 C 制造业 score=94.54
+MATCH 002222 福晶科技 C 制造业 score=94.66
+Progress: 100/200, matches=13
+MATCH 002245 蔚蓝锂芯 C 制造业 score=90.89
+MATCH 002254 泰和新材 C 制造业 score=116.84
+MATCH 002272 川润股份 C 制造业 score=84.94
+MATCH 002273 水晶光电 C 制造业 score=88.84
+MATCH 002281 光迅科技 C 制造业 score=110.0
+MATCH 002283 天润工业 C 制造业 score=98.61
+MATCH 002290 禾盛新材 C 制造业 score=85.1
+MATCH 002297 博云新材 C 制造业 score=106.99
+MATCH 002317 众生药业 C 制造业 score=85.61
+Progress: 200/200, matches=22
+Saved 22 SEPA Stage 2 candidates to batch_results/sepa_600.csv
+  0%|          | 0/17 [00:00<?, ?it/s]  6%|▌         | 1/17 [00:00<00:02,  5.36it/s] 12%|█▏        | 2/17 [00:00<00:02,  5.48it/s] 18%|█▊        | 3/17 [00:00<00:02,  5.57it/s] 24%|██▎       | 4/17 [00:00<00:02,  5.60it/s] 29%|██▉       | 5/17 [00:00<00:02,  5.67it/s] 35%|███▌      | 6/17 [00:01<00:01,  5.64it/s] 41%|████      | 7/17 [00:01<00:01,  5.63it/s] 47%|████▋     | 8/17 [00:01<00:01,  5.57it/s] 53%|█████▎    | 9/17 [00:01<00:01,  5.50it/s] 59%|█████▉    | 10/17 [00:01<00:01,  5.26it/s] 65%|██████▍   | 11/17 [00:02<00:01,  5.38it/s] 71%|███████   | 12/17 [00:02<00:00,  5.28it/s] 76%|███████▋  | 13/17 [00:02<00:00,  5.32it/s] 82%|████████▏ | 14/17 [00:02<00:00,  5.31it/s] 88%|████████▊ | 15/17 [00:02<00:00,  5.17it/s] 94%|█████████▍| 16/17 [00:03<00:00,  4.97it/s]100%|██████████| 17/17 [00:03<00:00,  4.91it/s]                                               Scanning 200 stocks for SEPA Stage 1, offset=600, limit=200, industry mappings=2893...
+Pass 1/2: fetching history and collecting 120d returns...
+  Pass 1 progress: 100/200
+  Pass 1 progress: 200/200
+Computing RPS for 200 stocks...
+Pass 2/2: evaluating Stage 1 candidates with RPS...
+MATCH 002111 威海广泰 C 制造业 score=120.7 RPS=59.8 纯筑底股
+MATCH 002112 三变科技 C 制造业 score=106.5 RPS=84.92 纯筑底股
+MATCH 002114 罗平锌电 C 制造业 score=73.5 RPS=58.79 纯筑底股
+MATCH 002115 三维通信 L 商务服务 score=123.5 RPS=59.3 纯筑底股
+MATCH 002116 中国海诚 E 建筑业 score=91.0 RPS=48.74 纯筑底股
+MATCH 002117 东港股份 C 制造业 score=89.0 RPS=7.54 纯筑底股
+MATCH 002120 韵达股份 G 运输仓储 score=70.22 RPS=55.78 纯筑底股
+MATCH 002123 梦网科技 I 信息技术 score=56.04 RPS=2.51 纯筑底股
+MATCH 002127 南极电商 L 商务服务 score=86.5 RPS=28.14 纯筑底股
+MATCH 002130 沃尔核材 C 制造业 score=85.0 RPS=25.63 纯筑底股
+MATCH 002131 利欧股份 L 商务服务 score=81.0 RPS=71.36 纯筑底股
+MATCH 002133 广宇集团 K 房地产 score=85.0 RPS=32.16 纯筑底股
+MATCH 002135 东南网架 C 制造业 score=79.64 RPS=92.46 纯筑底股
+MATCH 002136 安 纳 达 C 制造业 score=104.5 RPS=76.38 纯筑底股
+MATCH 002139 拓邦股份 C 制造业 score=60.0 RPS=14.57 纯筑底股
+MATCH 002140 东华科技 E 建筑业 score=89.5 RPS=48.24 纯筑底股
+MATCH 002144 宏达高科 C 制造业 score=69.5 RPS=45.23 纯筑底股
+MATCH 002145 钛能化学 C 制造业 score=92.72 RPS=62.31 纯筑底股
+MATCH 002146 荣盛发展 K 房地产 score=86.5 RPS=23.62 纯筑底股
+MATCH 002148 北纬科技 I 信息技术 score=62.97 RPS=15.08 纯筑底股
+MATCH 002149 西部材料 C 制造业 score=66.0 RPS=95.48 纯筑底股
+MATCH 002150 正泰电源 C 制造业 score=70.91 RPS=85.93 纯筑底股
+MATCH 002151 北斗星通 C 制造业 score=98.0 RPS=68.84 纯筑底股
+MATCH 002152 广电运通 C 制造业 score=89.0 RPS=40.7 纯筑底股
+MATCH 002153 石基信息 I 信息技术 score=89.5 RPS=18.09 纯筑底股
+MATCH 002154 报 喜 鸟 C 制造业 score=105.59 RPS=70.35 纯筑底股
+MATCH 002155 湖南黄金 B 采矿业 score=166.0 RPS=80.4 高质量过渡态
+MATCH 002157 正邦科技 A 农林牧渔 score=100.2 RPS=24.62 纯筑底股
+MATCH 002159 三特索道 N 公共环保 score=90.74 RPS=60.3 纯筑底股
+MATCH 002160 常铝股份 C 制造业 score=91.0 RPS=38.69 纯筑底股
+MATCH 002161 远 望 谷 C 制造业 score=65.0 RPS=46.23 纯筑底股
+MATCH 002162 悦心健康 C 制造业 score=90.5 RPS=28.64 纯筑底股
+MATCH 002163 海南发展 E 建筑业 score=89.5 RPS=1.51 纯筑底股
+MATCH 002164 宁波东力 C 制造业 score=69.0 RPS=19.1 纯筑底股
+MATCH 002165 红 宝 丽 C 制造业 score=68.0 RPS=52.26 纯筑底股
+MATCH 002166 莱茵生物 C 制造业 score=95.0 RPS=42.21 纯筑底股
+MATCH 002170 芭田股份 C 制造业 score=118.5 RPS=60.8 纯筑底股
+MATCH 002172 澳洋健康 Q 卫生 score=85.0 RPS=20.6 纯筑底股
+MATCH 002173 创新医疗 Q 卫生 score=74.0 RPS=44.22 纯筑底股
+MATCH 002174 游族网络 I 信息技术 score=70.5 RPS=68.34 纯筑底股
+MATCH 002176 江特电机 C 制造业 score=116.53 RPS=78.39 基础过渡态
+MATCH 002177 御银股份 C 制造业 score=73.0 RPS=44.72 纯筑底股
+MATCH 002181 粤 传 媒 L 商务服务 score=63.2 RPS=85.43 纯筑底股
+MATCH 002182 宝武镁业 C 制造业 score=72.5 RPS=65.33 纯筑底股
+MATCH 002183 怡 亚 通 L 商务服务 score=97.61 RPS=81.91 基础过渡态
+MATCH 002186 全 聚 德 H 住宿餐饮 score=91.5 RPS=17.59 纯筑底股
+MATCH 002187 广百股份 F 批发零售 score=92.0 RPS=2.01 纯筑底股
+MATCH 002188 中天服务 K 房地产 score=74.0 RPS=57.29 纯筑底股
+MATCH 002189 中光学 C 制造业 score=62.5 RPS=50.25 纯筑底股
+MATCH 002190 成飞集成 C 制造业 score=87.5 RPS=17.09 纯筑底股
+MATCH 002191 劲嘉股份 C 制造业 score=89.23 RPS=61.31 纯筑底股
+MATCH 002194 武汉凡谷 C 制造业 score=87.5 RPS=66.83 纯筑底股
+MATCH 002195 岩山科技 I 信息技术 score=98.0 RPS=73.87 纯筑底股
+MATCH 002196 方正电机 C 制造业 score=101.0 RPS=74.37 纯筑底股
+MATCH 002197 证通电子 I 信息技术 score=69.0 RPS=4.02 纯筑底股
+MATCH 002201 九鼎新材 C 制造业 score=102.5 RPS=87.94 基础过渡态
+MATCH 002202 金风科技 C 制造业 score=111.35 RPS=86.43 纯筑底股
+MATCH 002204 大连重工 C 制造业 score=92.0 RPS=22.11 纯筑底股
+MATCH 002205 国统股份 C 制造业 score=65.0 RPS=36.18 纯筑底股
+MATCH 002206 海 利 得 C 制造业 score=90.1 RPS=63.32 纯筑底股
+MATCH 002209 达 意 隆 C 制造业 score=85.0 RPS=11.56 纯筑底股
+MATCH 002212 天融信 I 信息技术 score=65.0 RPS=10.05 纯筑底股
+MATCH 002215 诺 普 信 C 制造业 score=68.53 RPS=51.76 纯筑底股
+MATCH 002216 三全食品 C 制造业 score=129.96 RPS=72.86 纯筑底股
+MATCH 002218 拓日新能 C 制造业 score=78.5 RPS=63.82 纯筑底股
+MATCH 002219 新里程 Q 卫生 score=89.5 RPS=47.74 纯筑底股
+MATCH 002221 东华能源 F 批发零售 score=69.0 RPS=12.06 纯筑底股
+MATCH 002223 鱼跃医疗 C 制造业 score=60.2 RPS=8.54 纯筑底股
+MATCH 002224 三 力 士 C 制造业 score=85.0 RPS=29.15 纯筑底股
+  Pass 2 progress: 100/200, matches=69
+MATCH 002228 合兴包装 C 制造业 score=89.5 RPS=34.17 纯筑底股
+MATCH 002232 启明信息 I 信息技术 score=85.0 RPS=27.64 纯筑底股
+MATCH 002233 塔牌集团 C 制造业 score=92.5 RPS=38.19 纯筑底股
+MATCH 002234 民和股份 A 农林牧渔 score=62.5 RPS=26.13 纯筑底股
+MATCH 002235 安妮股份 C 制造业 score=81.5 RPS=9.05 纯筑底股
+MATCH 002236 大华股份 C 制造业 score=91.0 RPS=52.76 纯筑底股
+MATCH 002237 恒邦股份 C 制造业 score=119.5 RPS=76.88 纯筑底股
+MATCH 002238 天威视讯 I 信息技术 score=66.5 RPS=3.02 纯筑底股
+MATCH 002239 奥特佳 C 制造业 score=86.5 RPS=41.21 纯筑底股
+MATCH 002242 九阳股份 C 制造业 score=89.5 RPS=30.65 纯筑底股
+MATCH 002246 北化股份 C 制造业 score=121.5 RPS=78.89 纯筑底股
+MATCH 002248 华东数控 C 制造业 score=72.5 RPS=47.24 纯筑底股
+MATCH 002249 大洋电机 C 制造业 score=72.5 RPS=35.68 纯筑底股
+MATCH 002250 联化科技 C 制造业 score=124.0 RPS=77.89 纯筑底股
+MATCH 002252 上海莱士 C 制造业 score=60.0 RPS=11.06 纯筑底股
+MATCH 002255 海陆重工 C 制造业 score=96.0 RPS=20.1 纯筑底股
+MATCH 002256 兆新股份 D 水电煤气 score=118.7 RPS=71.86 纯筑底股
+MATCH 002258 利尔化学 C 制造业 score=86.79 RPS=67.34 纯筑底股
+MATCH 002259 升达林业 D 水电煤气 score=79.39 RPS=75.88 纯筑底股
+MATCH 002261 拓维信息 I 信息技术 score=69.5 RPS=67.84 纯筑底股
+MATCH 002262 恩华药业 C 制造业 score=65.86 RPS=21.11 纯筑底股
+MATCH 002264 新 华 都 I 信息技术 score=89.5 RPS=5.53 纯筑底股
+MATCH 002265 建设工业 C 制造业 score=73.17 RPS=16.08 纯筑底股
+MATCH 002266 浙富控股 N 公共环保 score=150.07 RPS=79.4 高质量过渡态
+MATCH 002267 陕天然气 D 水电煤气 score=86.5 RPS=54.77 纯筑底股
+MATCH 002268 电科网安 I 信息技术 score=85.0 RPS=13.07 纯筑底股
+MATCH 002269 美邦服饰 C 制造业 score=86.5 RPS=12.56 纯筑底股
+MATCH 002271 东方雨虹 C 制造业 score=100.5 RPS=53.27 纯筑底股
+MATCH 002274 华昌化工 C 制造业 score=91.5 RPS=51.26 纯筑底股
+MATCH 002275 桂林三金 C 制造业 score=91.5 RPS=46.73 纯筑底股
+MATCH 002276 万马股份 C 制造业 score=85.0 RPS=7.04 纯筑底股
+MATCH 002278 神开股份 C 制造业 score=88.0 RPS=9.55 纯筑底股
+MATCH 002279 久其软件 I 信息技术 score=88.0 RPS=40.2 纯筑底股
+MATCH 002282 博深股份 C 制造业 score=86.5 RPS=37.69 纯筑底股
+MATCH 002284 亚太股份 C 制造业 score=72.5 RPS=39.2 纯筑底股
+MATCH 002285 世联行 K 房地产 score=75.5 RPS=6.03 纯筑底股
+MATCH 002286 保龄宝 C 制造业 score=87.33 RPS=61.81 纯筑底股
+MATCH 002287 奇正藏药 C 制造业 score=88.5 RPS=37.19 纯筑底股
+MATCH 002291 遥望科技 I 信息技术 score=69.5 RPS=39.7 纯筑底股
+MATCH 002292 奥飞娱乐 C 制造业 score=69.0 RPS=14.07 纯筑底股
+MATCH 002294 信立泰 C 制造业 score=67.5 RPS=0 纯筑底股
+MATCH 002295 精艺股份 C 制造业 score=86.5 RPS=29.65 纯筑底股
+MATCH 002296 辉煌科技 C 制造业 score=89.5 RPS=54.27 纯筑底股
+MATCH 002298 中电鑫龙 C 制造业 score=72.5 RPS=32.66 纯筑底股
+MATCH 002299 圣农发展 C 制造业 score=121.66 RPS=66.33 纯筑底股
+MATCH 002300 太阳电缆 C 制造业 score=76.5 RPS=1.01 纯筑底股
+MATCH 002302 西部建设 C 制造业 score=85.0 RPS=21.61 纯筑底股
+MATCH 002303 美盈森 C 制造业 score=67.5 RPS=56.28 纯筑底股
+MATCH 002304 洋河股份 C 制造业 score=61.5 RPS=5.03 纯筑底股
+MATCH 002307 北新路桥 E 建筑业 score=85.0 RPS=6.53 纯筑底股
+MATCH 002309 中利集团 C 制造业 score=81.0 RPS=49.75 纯筑底股
+MATCH 002310 东方新能 D 水电煤气 score=79.5 RPS=53.77 纯筑底股
+MATCH 002311 海大集团 C 制造业 score=60.0 RPS=24.12 纯筑底股
+MATCH 002312 川发龙蟒 C 制造业 score=90.5 RPS=31.16 纯筑底股
+MATCH 002315 焦点科技 I 信息技术 score=65.0 RPS=23.12 纯筑底股
+MATCH 002316 亚联发展 I 信息技术 score=66.5 RPS=58.29 纯筑底股
+MATCH 002318 久立特材 C 制造业 score=87.5 RPS=65.83 纯筑底股
+MATCH 002319 乐通股份 C 制造业 score=67.0 RPS=69.85 纯筑底股
+MATCH 002320 海峡股份 G 运输仓储 score=89.0 RPS=0.5 纯筑底股
+MATCH 002321 华英农业 A 农林牧渔 score=86.5 RPS=13.57 纯筑底股
+MATCH 002322 理工能科 I 信息技术 score=85.0 RPS=50.75 纯筑底股
+MATCH 002324 普利特 C 制造业 score=93.5 RPS=73.37 纯筑底股
+MATCH 002326 永太科技 C 制造业 score=125.0 RPS=64.82 纯筑底股
+MATCH 002327 富安娜 C 制造业 score=90.37 RPS=62.81 纯筑底股
+MATCH 002328 新朋股份 C 制造业 score=120.83 RPS=80.9 高质量过渡态
+MATCH 002329 皇氏集团 C 制造业 score=75.5 RPS=3.52 纯筑底股
+MATCH 002330 得利斯 C 制造业 score=86.5 RPS=18.59 纯筑底股
+MATCH 002331 皖通科技 I 信息技术 score=98.05 RPS=55.28 纯筑底股
+MATCH 002332 仙琚制药 C 制造业 score=86.59 RPS=56.78 纯筑底股
+MATCH 002333 罗普斯金 C 制造业 score=89.5 RPS=49.25 纯筑底股
+MATCH 002334 英威腾 C 制造业 score=88.5 RPS=64.32 纯筑底股
+MATCH 002335 科华数据 C 制造业 score=76.71 RPS=72.36 纯筑底股
+MATCH 002337 赛象科技 C 制造业 score=90.5 RPS=27.14 纯筑底股
+MATCH 002338 奥普光电 C 制造业 score=85.13 RPS=69.35 纯筑底股
+  Pass 2 progress: 200/200, matches=143
+Saved 143 SEPA Stage 1 candidates to batch_results/stage1_600.csv
+Merging current batch results...
+Merged: 4 trend candidates, 22 SEPA Stage 2 candidates, 556 SEPA Stage 1 candidates
+
+Batch 5: offset=800, limit=200
+  0%|          | 0/17 [00:00<?, ?it/s]  6%|▌         | 1/17 [00:00<00:02,  5.85it/s] 12%|█▏        | 2/17 [00:00<00:02,  5.56it/s] 18%|█▊        | 3/17 [00:00<00:02,  5.48it/s] 24%|██▎       | 4/17 [00:00<00:02,  5.52it/s] 29%|██▉       | 5/17 [00:00<00:02,  5.66it/s] 35%|███▌      | 6/17 [00:01<00:02,  5.32it/s] 41%|████      | 7/17 [00:01<00:01,  5.36it/s] 47%|████▋     | 8/17 [00:01<00:01,  5.45it/s] 53%|█████▎    | 9/17 [00:01<00:01,  5.34it/s] 59%|█████▉    | 10/17 [00:01<00:01,  5.44it/s] 65%|██████▍   | 11/17 [00:02<00:01,  5.48it/s] 71%|███████   | 12/17 [00:02<00:00,  5.58it/s] 76%|███████▋  | 13/17 [00:02<00:00,  5.54it/s] 82%|████████▏ | 14/17 [00:02<00:00,  5.54it/s] 88%|████████▊ | 15/17 [00:02<00:00,  5.61it/s] 94%|█████████▍| 16/17 [00:02<00:00,  5.58it/s]100%|██████████| 17/17 [00:03<00:00,  5.75it/s]                                               Using stock pool source: stock_info_a_code_name
+Scanning 200 stocks, offset=800, limit=200...
+Progress: 100/200, matches=0
+Progress: 200/200, matches=0
+Saved 0 candidates to batch_results/trend_800.csv
+  0%|          | 0/17 [00:00<?, ?it/s]  6%|▌         | 1/17 [00:00<00:03,  5.13it/s] 12%|█▏        | 2/17 [00:00<00:02,  5.57it/s] 18%|█▊        | 3/17 [00:00<00:02,  5.35it/s] 24%|██▎       | 4/17 [00:00<00:02,  5.39it/s] 29%|██▉       | 5/17 [00:00<00:02,  5.39it/s] 35%|███▌      | 6/17 [00:01<00:01,  5.57it/s] 41%|████      | 7/17 [00:01<00:01,  5.67it/s] 47%|████▋     | 8/17 [00:01<00:01,  5.62it/s] 53%|█████▎    | 9/17 [00:01<00:01,  5.51it/s] 59%|█████▉    | 10/17 [00:01<00:01,  5.45it/s] 65%|██████▍   | 11/17 [00:02<00:01,  5.42it/s] 71%|███████   | 12/17 [00:02<00:00,  5.44it/s] 76%|███████▋  | 13/17 [00:02<00:00,  5.38it/s] 82%|████████▏ | 14/17 [00:02<00:00,  5.48it/s] 88%|████████▊ | 15/17 [00:02<00:00,  5.56it/s] 94%|█████████▍| 16/17 [00:02<00:00,  5.42it/s]100%|██████████| 17/17 [00:03<00:00,  5.44it/s]                                               Scanning 200 stocks for SEPA Stage 2, offset=800, limit=200, industry mappings=2893...
+MATCH 002353 杰瑞股份 C 制造业 score=105.05
+MATCH 002364 中恒电气 C 制造业 score=97.31
+MATCH 002371 北方华创 C 制造业 score=106.25
+MATCH 002378 章源钨业 C 制造业 score=115.0
+MATCH 002380 科远智慧 I 信息技术 score=98.0
+MATCH 002384 东山精密 C 制造业 score=113.34
+MATCH 002407 多氟多 C 制造业 score=103.36
+MATCH 002409 雅克科技 C 制造业 score=102.05
+MATCH 002428 云南锗业 C 制造业 score=95.44
+MATCH 002429 兆驰股份 C 制造业 score=91.21
+MATCH 002436 兴森科技 C 制造业 score=109.01
+MATCH 002443 金洲管道 C 制造业 score=90.82
+MATCH 002446 盛路通信 C 制造业 score=93.0
+Progress: 100/200, matches=13
+MATCH 002463 沪电股份 C 制造业 score=105.67
+MATCH 002475 立讯精密 C 制造业 score=95.51
+MATCH 002484 江海股份 C 制造业 score=104.25
+MATCH 002491 通鼎互联 C 制造业 score=108.0
+MATCH 002518 科士达 C 制造业 score=85.19
+MATCH 002522 浙江众成 C 制造业 score=96.21
+MATCH 002534 西子洁能 C 制造业 score=97.4
+MATCH 002536 飞龙股份 C 制造业 score=93.23
+MATCH 002552 宝鼎科技 C 制造业 score=107.03
+Progress: 200/200, matches=22
+Saved 22 SEPA Stage 2 candidates to batch_results/sepa_800.csv
+  0%|          | 0/17 [00:00<?, ?it/s]  6%|▌         | 1/17 [00:00<00:02,  5.96it/s] 12%|█▏        | 2/17 [00:00<00:02,  5.80it/s] 18%|█▊        | 3/17 [00:00<00:02,  5.62it/s] 24%|██▎       | 4/17 [00:00<00:02,  5.59it/s] 29%|██▉       | 5/17 [00:00<00:02,  5.52it/s] 35%|███▌      | 6/17 [00:01<00:02,  5.48it/s] 41%|████      | 7/17 [00:01<00:01,  5.39it/s] 47%|████▋     | 8/17 [00:01<00:01,  5.32it/s] 53%|█████▎    | 9/17 [00:01<00:01,  5.42it/s] 59%|█████▉    | 10/17 [00:01<00:01,  5.48it/s] 65%|██████▍   | 11/17 [00:02<00:01,  5.19it/s] 71%|███████   | 12/17 [00:02<00:00,  5.25it/s] 76%|███████▋  | 13/17 [00:02<00:00,  5.29it/s] 82%|████████▏ | 14/17 [00:02<00:00,  5.17it/s] 88%|████████▊ | 15/17 [00:02<00:00,  5.30it/s] 94%|█████████▍| 16/17 [00:02<00:00,  5.35it/s]100%|██████████| 17/17 [00:03<00:00,  5.50it/s]                                               Scanning 200 stocks for SEPA Stage 1, offset=800, limit=200, industry mappings=2893...
+Pass 1/2: fetching history and collecting 120d returns...
+  Pass 1 progress: 100/200
+  Pass 1 progress: 200/200
+Computing RPS for 200 stocks...
+Pass 2/2: evaluating Stage 1 candidates with RPS...
+MATCH 002339 积成电子 C 制造业 score=71.0 RPS=35.18 纯筑底股
+MATCH 002340 格林美 C 制造业 score=93.58 RPS=65.83 纯筑底股
+MATCH 002342 巨力索具 C 制造业 score=80.0 RPS=88.44 纯筑底股
+MATCH 002343 慈文传媒 R 文化传播 score=85.0 RPS=2.51 纯筑底股
+MATCH 002344 海宁皮城 L 商务服务 score=89.5 RPS=22.11 纯筑底股
+MATCH 002345 潮宏基 C 制造业 score=63.83 RPS=25.63 纯筑底股
+MATCH 002346 柘中股份 C 制造业 score=77.5 RPS=66.83 纯筑底股
+MATCH 002347 泰尔股份 C 制造业 score=69.5 RPS=27.64 纯筑底股
+MATCH 002349 精华制药 C 制造业 score=96.0 RPS=43.22 纯筑底股
+MATCH 002350 北京科锐 C 制造业 score=72.21 RPS=91.96 纯筑底股
+MATCH 002351 漫步者 C 制造业 score=61.5 RPS=37.19 纯筑底股
+MATCH 002352 顺丰控股 G 运输仓储 score=63.41 RPS=39.2 纯筑底股
+MATCH 002355 兴民智通 C 制造业 score=68.0 RPS=23.62 纯筑底股
+MATCH 002356 赫美集团 F 批发零售 score=88.0 RPS=11.06 纯筑底股
+MATCH 002357 富临运业 G 运输仓储 score=69.5 RPS=59.3 纯筑底股
+MATCH 002358 森源电气 C 制造业 score=103.38 RPS=67.34 纯筑底股
+MATCH 002361 神剑股份 C 制造业 score=68.53 RPS=94.97 纯筑底股
+MATCH 002363 隆基机械 C 制造业 score=89.5 RPS=30.15 纯筑底股
+MATCH 002365 永安药业 C 制造业 score=54.63 RPS=8.04 纯筑底股
+MATCH 002366 融发核电 C 制造业 score=86.5 RPS=32.66 纯筑底股
+MATCH 002367 康力电梯 C 制造业 score=88.0 RPS=22.61 纯筑底股
+MATCH 002368 太极股份 I 信息技术 score=60.0 RPS=12.06 纯筑底股
+MATCH 002369 卓翼科技 C 制造业 score=61.5 RPS=5.03 纯筑底股
+MATCH 002370 亚太药业 C 制造业 score=91.0 RPS=7.54 纯筑底股
+MATCH 002372 伟星新材 C 制造业 score=92.0 RPS=34.17 纯筑底股
+MATCH 002373 千方科技 I 信息技术 score=85.0 RPS=10.05 纯筑底股
+MATCH 002374 中锐股份 C 制造业 score=67.8 RPS=30.65 纯筑底股
+MATCH 002376 新北洋 C 制造业 score=91.0 RPS=41.21 纯筑底股
+MATCH 002381 双箭股份 C 制造业 score=64.53 RPS=40.2 纯筑底股
+MATCH 002382 蓝帆医疗 C 制造业 score=78.0 RPS=63.32 纯筑底股
+MATCH 002383 合众思壮 C 制造业 score=89.5 RPS=3.52 纯筑底股
+MATCH 002385 大北农 C 制造业 score=85.0 RPS=9.05 纯筑底股
+MATCH 002386 天原股份 C 制造业 score=122.0 RPS=69.35 纯筑底股
+MATCH 002387 维信诺 C 制造业 score=84.5 RPS=61.31 纯筑底股
+MATCH 002388 新亚制程 C 制造业 score=79.0 RPS=55.28 纯筑底股
+MATCH 002389 航天彩虹 C 制造业 score=86.5 RPS=16.08 纯筑底股
+MATCH 002390 信邦制药 F 批发零售 score=86.5 RPS=43.72 纯筑底股
+MATCH 002391 长青股份 C 制造业 score=93.0 RPS=50.75 纯筑底股
+MATCH 002392 北京利尔 C 制造业 score=123.0 RPS=79.4 高质量过渡态
+MATCH 002393 力生制药 C 制造业 score=85.0 RPS=46.23 纯筑底股
+MATCH 002394 联发股份 C 制造业 score=71.0 RPS=12.56 纯筑底股
+MATCH 002397 梦洁股份 C 制造业 score=101.0 RPS=65.33 纯筑底股
+MATCH 002398 垒知集团 C 制造业 score=89.5 RPS=8.54 纯筑底股
+MATCH 002399 海普瑞 C 制造业 score=64.0 RPS=18.09 纯筑底股
+MATCH 002400 省广集团 L 商务服务 score=68.0 RPS=42.71 纯筑底股
+MATCH 002401 中远海科 I 信息技术 score=89.0 RPS=38.69 纯筑底股
+MATCH 002402 和而泰 C 制造业 score=72.5 RPS=2.01 纯筑底股
+MATCH 002403 爱仕达 C 制造业 score=61.5 RPS=24.62 纯筑底股
+MATCH 002404 嘉欣丝绸 C 制造业 score=79.5 RPS=51.26 纯筑底股
+MATCH 002405 四维图新 I 信息技术 score=68.0 RPS=32.16 纯筑底股
+MATCH 002408 齐翔腾达 C 制造业 score=118.5 RPS=70.85 纯筑底股
+MATCH 002410 广联达 I 信息技术 score=85.0 RPS=10.55 纯筑底股
+MATCH 002412 汉森制药 C 制造业 score=94.36 RPS=56.28 纯筑底股
+MATCH 002413 雷科防务 C 制造业 score=120.0 RPS=68.84 纯筑底股
+MATCH 002414 高德红外 C 制造业 score=118.0 RPS=68.34 纯筑底股
+MATCH 002416 爱施德 F 批发零售 score=97.5 RPS=53.77 纯筑底股
+MATCH 002418 康盛股份 C 制造业 score=77.0 RPS=56.78 纯筑底股
+MATCH 002419 天虹股份 F 批发零售 score=86.5 RPS=31.16 纯筑底股
+MATCH 002420 毅昌科技 C 制造业 score=65.0 RPS=21.11 纯筑底股
+MATCH 002423 中粮资本 J 金融业 score=85.0 RPS=18.59 纯筑底股
+MATCH 002425 凯撒文化 I 信息技术 score=66.5 RPS=16.58 纯筑底股
+MATCH 002427 尤夫股份 C 制造业 score=85.0 RPS=6.53 纯筑底股
+MATCH 002430 杭氧股份 C 制造业 score=95.5 RPS=48.24 纯筑底股
+MATCH 002434 万里扬 C 制造业 score=61.5 RPS=20.1 纯筑底股
+MATCH 002437 誉衡药业 C 制造业 score=86.5 RPS=38.19 纯筑底股
+MATCH 002438 江苏神通 C 制造业 score=122.5 RPS=66.33 基础过渡态
+MATCH 002440 闰土股份 C 制造业 score=127.73 RPS=84.92 基础过渡态
+MATCH 002441 众业达 F 批发零售 score=69.5 RPS=58.79 纯筑底股
+MATCH 002444 巨星科技 C 制造业 score=76.39 RPS=36.18 纯筑底股
+MATCH 002445 中南文化 C 制造业 score=142.5 RPS=81.91 基础过渡态
+MATCH 002448 中原内配 C 制造业 score=127.0 RPS=72.36 纯筑底股
+  Pass 2 progress: 100/200, matches=71
+MATCH 002449 国星光电 C 制造业 score=80.0 RPS=57.79 纯筑底股
+MATCH 002451 摩恩电气 C 制造业 score=96.0 RPS=11.56 纯筑底股
+MATCH 002455 百川股份 C 制造业 score=78.5 RPS=76.88 纯筑底股
+MATCH 002456 欧菲光 C 制造业 score=65.5 RPS=44.22 纯筑底股
+MATCH 002459 晶澳科技 C 制造业 score=85.0 RPS=19.1 纯筑底股
+MATCH 002460 赣锋锂业 C 制造业 score=78.19 RPS=74.87 纯筑底股
+MATCH 002461 珠江啤酒 C 制造业 score=66.5 RPS=45.73 纯筑底股
+MATCH 002462 嘉事堂 F 批发零售 score=64.5 RPS=37.69 纯筑底股
+MATCH 002465 海格通信 C 制造业 score=84.88 RPS=67.84 纯筑底股
+MATCH 002466 天齐锂业 C 制造业 score=126.5 RPS=81.41 高质量过渡态
+MATCH 002467 二六三 I 信息技术 score=72.0 RPS=46.73 纯筑底股
+MATCH 002468 申通快递 G 运输仓储 score=98.5 RPS=54.27 纯筑底股
+MATCH 002469 三维化学 C 制造业 score=85.0 RPS=27.14 纯筑底股
+MATCH 002470 金正大 C 制造业 score=123.5 RPS=78.89 纯筑底股
+MATCH 002471 中超控股 C 制造业 score=104.5 RPS=72.86 纯筑底股
+MATCH 002472 双环传动 C 制造业 score=96.92 RPS=71.36 纯筑底股
+MATCH 002474 榕基软件 I 信息技术 score=69.5 RPS=3.02 纯筑底股
+MATCH 002476 新叶股份 C 制造业 score=92.5 RPS=50.25 纯筑底股
+MATCH 002478 常宝股份 C 制造业 score=99.5 RPS=33.17 纯筑底股
+MATCH 002479 富春环保 D 水电煤气 score=98.0 RPS=60.8 纯筑底股
+MATCH 002480 新筑股份 C 制造业 score=64.1 RPS=59.8 纯筑底股
+MATCH 002481 双塔食品 C 制造业 score=89.0 RPS=15.08 纯筑底股
+MATCH 002482 广田集团 E 建筑业 score=61.5 RPS=28.14 纯筑底股
+MATCH 002483 润邦股份 C 制造业 score=64.72 RPS=19.6 纯筑底股
+MATCH 002486 嘉麟杰 C 制造业 score=63.0 RPS=29.65 纯筑底股
+MATCH 002487 大金重工 C 制造业 score=64.16 RPS=69.85 纯筑底股
+MATCH 002488 金固股份 C 制造业 score=76.0 RPS=76.38 纯筑底股
+MATCH 002490 山东墨龙 C 制造业 score=86.5 RPS=73.37 纯筑底股
+MATCH 002492 恒基达鑫 G 运输仓储 score=69.5 RPS=7.04 纯筑底股
+MATCH 002493 荣盛石化 C 制造业 score=125.0 RPS=80.4 纯筑底股
+MATCH 002495 佳隆股份 C 制造业 score=64.65 RPS=29.15 纯筑底股
+MATCH 002497 雅化集团 C 制造业 score=88.97 RPS=64.32 纯筑底股
+MATCH 002498 汉缆股份 C 制造业 score=75.87 RPS=93.97 纯筑底股
+MATCH 002500 山西证券 J 金融业 score=60.0 RPS=36.68 纯筑底股
+MATCH 002506 协鑫集成 C 制造业 score=80.0 RPS=77.89 纯筑底股
+MATCH 002507 涪陵榨菜 C 制造业 score=94.48 RPS=47.74 纯筑底股
+MATCH 002508 老板电器 C 制造业 score=67.67 RPS=26.13 纯筑底股
+MATCH 002510 天汽模 C 制造业 score=92.0 RPS=45.23 纯筑底股
+MATCH 002511 中顺洁柔 C 制造业 score=86.5 RPS=40.7 纯筑底股
+MATCH 002516 旷达科技 C 制造业 score=95.3 RPS=57.29 纯筑底股
+MATCH 002517 恺英网络 I 信息技术 score=92.5 RPS=4.52 纯筑底股
+MATCH 002519 银河电子 C 制造业 score=106.67 RPS=52.76 纯筑底股
+MATCH 002521 齐峰新材 C 制造业 score=90.0 RPS=34.67 纯筑底股
+MATCH 002523 天桥起重 C 制造业 score=89.5 RPS=39.7 纯筑底股
+MATCH 002524 光正眼科 Q 卫生 score=66.5 RPS=35.68 纯筑底股
+MATCH 002526 山东矿机 C 制造业 score=65.0 RPS=26.63 纯筑底股
+MATCH 002530 金财互联 C 制造业 score=85.0 RPS=13.07 纯筑底股
+MATCH 002531 天顺风能 C 制造业 score=82.2 RPS=86.43 纯筑底股
+MATCH 002533 金杯电工 C 制造业 score=74.0 RPS=53.27 纯筑底股
+MATCH 002537 海联金汇 C 制造业 score=85.0 RPS=4.02 纯筑底股
+MATCH 002539 云图控股 C 制造业 score=127.5 RPS=70.35 纯筑底股
+MATCH 002540 亚太科技 C 制造业 score=90.5 RPS=14.07 纯筑底股
+MATCH 002541 鸿路钢构 C 制造业 score=68.0 RPS=64.82 纯筑底股
+MATCH 002543 万和电气 C 制造业 score=86.5 RPS=5.53 纯筑底股
+MATCH 002544 普天科技 I 信息技术 score=71.5 RPS=0.5 纯筑底股
+MATCH 002545 东方铁塔 C 制造业 score=67.06 RPS=71.86 纯筑底股
+MATCH 002546 新联电子 C 制造业 score=77.0 RPS=63.82 纯筑底股
+MATCH 002548 金新农 C 制造业 score=90.5 RPS=9.55 纯筑底股
+MATCH 002549 凯美特气 N 公共环保 score=91.0 RPS=25.13 纯筑底股
+MATCH 002550 千红制药 C 制造业 score=74.07 RPS=17.09 纯筑底股
+MATCH 002551 尚荣医疗 C 制造业 score=63.39 RPS=23.12 纯筑底股
+MATCH 002553 南方精工 C 制造业 score=65.0 RPS=6.03 纯筑底股
+MATCH 002554 惠博普 B 采矿业 score=112.5 RPS=62.31 纯筑底股
+MATCH 002555 三七互娱 I 信息技术 score=96.0 RPS=42.21 纯筑底股
+MATCH 002556 辉隆股份 F 批发零售 score=89.5 RPS=44.72 纯筑底股
+MATCH 002557 洽洽食品 C 制造业 score=70.0 RPS=49.25 纯筑底股
+MATCH 002558 巨人网络 I 信息技术 score=72.4 RPS=0 纯筑底股
+MATCH 002560 通达股份 C 制造业 score=121.0 RPS=80.9 基础过渡态
+MATCH 002561 徐家汇 F 批发零售 score=86.5 RPS=14.57 纯筑底股
+MATCH 002562 兄弟科技 C 制造业 score=89.0 RPS=17.59 纯筑底股
+MATCH 002563 森马服饰 C 制造业 score=123.82 RPS=58.29 纯筑底股
+MATCH 002565 顺灏股份 C 制造业 score=92.43 RPS=20.6 纯筑底股
+MATCH 002566 益盛药业 C 制造业 score=68.81 RPS=41.71 纯筑底股
+MATCH 002567 唐人神 C 制造业 score=85.0 RPS=13.57 纯筑底股
+  Pass 2 progress: 200/200, matches=145
+Saved 145 SEPA Stage 1 candidates to batch_results/stage1_800.csv
+Merging current batch results...
+Merged: 4 trend candidates, 29 SEPA Stage 2 candidates, 701 SEPA Stage 1 candidates
+Refreshing market breadth data...
+Using market breadth source: stock_zh_a_spot
+Saved market breadth to market_breadth.json
+{
+  "generated_at": "2026-06-19 10:55:39",
+  "total_count": 5527,
+  "up_count": 2023,
+  "down_count": 3394,
+  "flat_count": 110,
+  "up_ratio": 36.6,
+  "down_ratio": 61.41,
+  "panic_index": 62.65,
+  "panic_index_note": "0-100; calculated as down_count / (up_count + down_count) * 100",
+  "avg_pct_change": -0.29,
+  "median_pct_change": -0.77
+}
+
+Batch 6: offset=1000, limit=200
+  0%|          | 0/17 [00:00<?, ?it/s]  6%|▌         | 1/17 [00:00<00:02,  5.55it/s] 12%|█▏        | 2/17 [00:00<00:02,  5.38it/s] 18%|█▊        | 3/17 [00:00<00:02,  5.49it/s] 24%|██▎       | 4/17 [00:00<00:02,  5.43it/s] 29%|██▉       | 5/17 [00:00<00:02,  5.47it/s] 35%|███▌      | 6/17 [00:01<00:01,  5.52it/s] 41%|████      | 7/17 [00:01<00:01,  5.56it/s] 47%|████▋     | 8/17 [00:01<00:01,  5.55it/s] 53%|█████▎    | 9/17 [00:01<00:01,  5.38it/s] 59%|█████▉    | 10/17 [00:01<00:01,  5.44it/s] 65%|██████▍   | 11/17 [00:02<00:01,  5.40it/s] 71%|███████   | 12/17 [00:02<00:00,  5.42it/s] 76%|███████▋  | 13/17 [00:02<00:00,  5.37it/s] 82%|████████▏ | 14/17 [00:02<00:00,  5.37it/s] 88%|████████▊ | 15/17 [00:02<00:00,  5.48it/s] 94%|█████████▍| 16/17 [00:02<00:00,  5.41it/s]100%|██████████| 17/17 [00:03<00:00,  5.45it/s]                                               Using stock pool source: stock_info_a_code_name
+Scanning 200 stocks, offset=1000, limit=200...
+Progress: 100/200, matches=0
+Progress: 200/200, matches=0
+Saved 0 candidates to batch_results/trend_1000.csv
+  0%|          | 0/17 [00:00<?, ?it/s]  6%|▌         | 1/17 [00:00<00:02,  5.98it/s] 12%|█▏        | 2/17 [00:00<00:02,  5.87it/s] 18%|█▊        | 3/17 [00:00<00:02,  5.84it/s] 24%|██▎       | 4/17 [00:00<00:02,  5.78it/s] 29%|██▉       | 5/17 [00:00<00:02,  5.59it/s] 35%|███▌      | 6/17 [00:01<00:01,  5.70it/s] 41%|████      | 7/17 [00:01<00:01,  5.71it/s] 47%|████▋     | 8/17 [00:01<00:01,  5.78it/s] 53%|█████▎    | 9/17 [00:01<00:01,  5.38it/s] 59%|█████▉    | 10/17 [00:01<00:01,  5.33it/s] 65%|██████▍   | 11/17 [00:01<00:01,  5.34it/s] 71%|███████   | 12/17 [00:02<00:00,  5.38it/s] 76%|███████▋  | 13/17 [00:02<00:00,  5.45it/s] 82%|████████▏ | 14/17 [00:02<00:00,  5.38it/s] 88%|████████▊ | 15/17 [00:02<00:00,  5.54it/s] 94%|█████████▍| 16/17 [00:02<00:00,  5.43it/s]100%|██████████| 17/17 [00:03<00:00,  5.64it/s]                                               Scanning 200 stocks for SEPA Stage 2, offset=1000, limit=200, industry mappings=2893...
+MATCH 002579 中京电子 C 制造业 score=95.87
+MATCH 002585 双星新材 C 制造业 score=100.83
+MATCH 002631 德尔未来 C 制造业 score=87.67
+MATCH 002635 安洁科技 C 制造业 score=101.79
+MATCH 002636 金安国纪 C 制造业 score=107.17
+MATCH 002643 万润股份 C 制造业 score=106.1
+MATCH 002645 华宏科技 C 制造业 score=106.61
+MATCH 002654 万润科技 L 商务服务 score=83.4
+MATCH 002655 共达电声 C 制造业 score=95.11
+MATCH 002669 康达新材 C 制造业 score=92.68
+Progress: 100/200, matches=10
+MATCH 002708 光洋股份 C 制造业 score=91.52
+MATCH 002718 友邦吊顶 C 制造业 score=94.99
+MATCH 002729 好利科技 C 制造业 score=89.28
+MATCH 002730 电光科技 C 制造业 score=91.75
+MATCH 002733 雄韬股份 C 制造业 score=105.39
+MATCH 002741 光华科技 C 制造业 score=127.57
+MATCH 002745 木林森 C 制造业 score=116.13
+MATCH 002768 国恩股份 C 制造业 score=123.7
+MATCH 002774 快意电梯 C 制造业 score=87.88
+MATCH 002782 可立克 C 制造业 score=80.0
+MATCH 002787 华源控股 C 制造业 score=94.84
+MATCH 002803 吉宏股份 F 批发零售 score=112.05
+MATCH 002805 丰元股份 C 制造业 score=116.46
+MATCH 002806 华锋股份 C 制造业 score=96.98
+Progress: 200/200, matches=24
+Saved 24 SEPA Stage 2 candidates to batch_results/sepa_1000.csv
+  0%|          | 0/17 [00:00<?, ?it/s]  6%|▌         | 1/17 [00:00<00:02,  5.56it/s] 12%|█▏        | 2/17 [00:00<00:02,  5.53it/s] 18%|█▊        | 3/17 [00:00<00:02,  5.46it/s] 24%|██▎       | 4/17 [00:00<00:02,  5.53it/s] 29%|██▉       | 5/17 [00:00<00:02,  5.58it/s] 35%|███▌      | 6/17 [00:01<00:01,  5.65it/s] 41%|████      | 7/17 [00:01<00:01,  5.62it/s] 47%|████▋     | 8/17 [00:01<00:01,  5.66it/s] 53%|█████▎    | 9/17 [00:01<00:01,  5.56it/s] 59%|█████▉    | 10/17 [00:01<00:01,  5.66it/s] 65%|██████▍   | 11/17 [00:01<00:01,  5.61it/s] 71%|███████   | 12/17 [00:02<00:00,  5.34it/s] 76%|███████▋  | 13/17 [00:02<00:00,  5.49it/s] 82%|████████▏ | 14/17 [00:02<00:00,  5.58it/s] 88%|████████▊ | 15/17 [00:02<00:00,  5.49it/s] 94%|█████████▍| 16/17 [00:02<00:00,  5.67it/s]100%|██████████| 17/17 [00:03<00:00,  5.33it/s]                                               Scanning 200 stocks for SEPA Stage 1, offset=1000, limit=200, industry mappings=2893...
+Pass 1/2: fetching history and collecting 120d returns...
+  Pass 1 progress: 100/200
+  Pass 1 progress: 200/200
+Computing RPS for 200 stocks...
+Pass 2/2: evaluating Stage 1 candidates with RPS...
+MATCH 002568 百润股份 C 制造业 score=66.5 RPS=24.12 纯筑底股
+MATCH 002571 德力股份 C 制造业 score=70.24 RPS=75.88 纯筑底股
+MATCH 002573 清新环境 N 公共环保 score=89.0 RPS=42.71 纯筑底股
+MATCH 002574 明牌珠宝 C 制造业 score=86.5 RPS=41.71 纯筑底股
+MATCH 002575 群兴玩具 F 批发零售 score=86.5 RPS=55.28 纯筑底股
+MATCH 002577 雷柏科技 C 制造业 score=96.88 RPS=72.36 纯筑底股
+MATCH 002578 闽发铝业 C 制造业 score=77.5 RPS=39.7 纯筑底股
+MATCH 002582 好想你 C 制造业 score=98.5 RPS=57.29 纯筑底股
+MATCH 002583 海能达 C 制造业 score=61.5 RPS=29.65 纯筑底股
+MATCH 002584 西陇科学 C 制造业 score=76.79 RPS=55.78 纯筑底股
+MATCH 002588 史丹利 C 制造业 score=93.0 RPS=53.27 纯筑底股
+MATCH 002589 瑞康医药 F 批发零售 score=89.5 RPS=26.63 纯筑底股
+MATCH 002590 万安科技 C 制造业 score=65.69 RPS=34.17 纯筑底股
+MATCH 002591 恒大高新 C 制造业 score=103.5 RPS=71.86 纯筑底股
+MATCH 002593 日上集团 C 制造业 score=93.0 RPS=19.1 纯筑底股
+MATCH 002594 比亚迪 C 制造业 score=88.0 RPS=57.79 纯筑底股
+MATCH 002595 豪迈科技 C 制造业 score=92.0 RPS=49.75 纯筑底股
+MATCH 002596 海南瑞泽 C 制造业 score=89.5 RPS=0.5 纯筑底股
+MATCH 002597 金禾实业 C 制造业 score=110.5 RPS=67.84 纯筑底股
+MATCH 002599 盛通股份 C 制造业 score=65.0 RPS=13.07 纯筑底股
+MATCH 002601 龙佰集团 C 制造业 score=62.5 RPS=48.24 纯筑底股
+MATCH 002602 世纪华通 I 信息技术 score=67.5 RPS=28.14 纯筑底股
+MATCH 002603 以岭药业 C 制造业 score=91.05 RPS=50.75 纯筑底股
+MATCH 002605 姚记科技 I 信息技术 score=89.0 RPS=38.69 纯筑底股
+MATCH 002607 中公教育 P 教育 score=71.5 RPS=7.54 纯筑底股
+MATCH 002608 江苏国信 D 水电煤气 score=98.5 RPS=70.35 基础过渡态
+MATCH 002609 捷顺科技 I 信息技术 score=85.0 RPS=39.2 纯筑底股
+MATCH 002611 东方精工 C 制造业 score=95.94 RPS=71.36 纯筑底股
+MATCH 002612 朗姿股份 C 制造业 score=70.5 RPS=5.03 纯筑底股
+MATCH 002614 奥佳华 C 制造业 score=85.0 RPS=6.53 纯筑底股
+MATCH 002615 哈尔斯 C 制造业 score=63.0 RPS=52.76 纯筑底股
+MATCH 002616 长青集团 N 公共环保 score=66.5 RPS=46.73 纯筑底股
+MATCH 002617 露笑科技 C 制造业 score=79.5 RPS=74.87 纯筑底股
+MATCH 002622 皓宸医疗 Q 卫生 score=61.5 RPS=16.08 纯筑底股
+MATCH 002623 亚玛顿 C 制造业 score=68.0 RPS=62.31 纯筑底股
+MATCH 002624 完美世界 I 信息技术 score=60.0 RPS=38.19 纯筑底股
+MATCH 002626 金达威 C 制造业 score=85.0 RPS=24.62 纯筑底股
+MATCH 002627 三峡旅游 N 公共环保 score=68.87 RPS=45.73 纯筑底股
+MATCH 002628 成都路桥 E 建筑业 score=125.0 RPS=77.39 纯筑底股
+MATCH 002632 道明光学 C 制造业 score=91.0 RPS=32.66 纯筑底股
+MATCH 002633 申科股份 C 制造业 score=126.5 RPS=62.81 纯筑底股
+MATCH 002638 勤上股份 C 制造业 score=98.2 RPS=84.92 纯筑底股
+MATCH 002639 雪人集团 C 制造业 score=77.0 RPS=18.09 纯筑底股
+MATCH 002640 跨境通 F 批发零售 score=61.5 RPS=16.58 纯筑底股
+MATCH 002641 公元股份 C 制造业 score=85.5 RPS=65.83 纯筑底股
+MATCH 002644 佛慈制药 C 制造业 score=89.0 RPS=47.24 纯筑底股
+MATCH 002646 天佑德酒 C 制造业 score=62.86 RPS=17.09 纯筑底股
+MATCH 002647 仁东控股 J 金融业 score=71.12 RPS=91.46 纯筑底股
+MATCH 002648 卫星化学 C 制造业 score=127.0 RPS=84.42 纯筑底股
+MATCH 002649 博彦科技 I 信息技术 score=85.0 RPS=10.05 纯筑底股
+MATCH 002651 利君股份 C 制造业 score=89.0 RPS=7.04 纯筑底股
+MATCH 002652 扬子新材 C 制造业 score=145.0 RPS=82.91 高质量过渡态
+MATCH 002653 海思科 C 制造业 score=94.17 RPS=58.29 纯筑底股
+MATCH 002658 雪迪龙 C 制造业 score=94.59 RPS=59.3 纯筑底股
+MATCH 002659 凯文教育 P 教育 score=86.5 RPS=15.08 纯筑底股
+MATCH 002661 克明食品 C 制造业 score=63.12 RPS=36.18 纯筑底股
+MATCH 002666 德联集团 C 制造业 score=92.0 RPS=46.23 纯筑底股
+MATCH 002670 国盛证券 J 金融业 score=60.0 RPS=8.54 纯筑底股
+MATCH 002672 东江环保 C 制造业 score=61.5 RPS=12.06 纯筑底股
+MATCH 002673 西部证券 J 金融业 score=60.0 RPS=37.69 纯筑底股
+MATCH 002675 东诚药业 C 制造业 score=88.5 RPS=61.31 纯筑底股
+MATCH 002676 顺威股份 C 制造业 score=65.06 RPS=2.01 纯筑底股
+MATCH 002677 浙江美大 C 制造业 score=69.5 RPS=42.21 纯筑底股
+MATCH 002678 珠江钢琴 C 制造业 score=81.0 RPS=66.33 纯筑底股
+MATCH 002679 福建金森 A 农林牧渔 score=68.0 RPS=6.03 纯筑底股
+MATCH 002682 龙洲股份 G 运输仓储 score=92.5 RPS=0 纯筑底股
+MATCH 002683 广东宏大 B 采矿业 score=68.0 RPS=18.59 纯筑底股
+MATCH 002686 亿利达 C 制造业 score=74.0 RPS=31.66 纯筑底股
+  Pass 2 progress: 100/200, matches=68
+MATCH 002687 乔治白 C 制造业 score=67.53 RPS=53.77 纯筑底股
+MATCH 002688 金河生物 C 制造业 score=89.0 RPS=43.22 纯筑底股
+MATCH 002690 美亚光电 C 制造业 score=61.4 RPS=20.1 纯筑底股
+MATCH 002692 远程股份 C 制造业 score=65.0 RPS=25.63 纯筑底股
+MATCH 002695 煌上煌 C 制造业 score=87.0 RPS=63.82 纯筑底股
+MATCH 002696 百洋股份 C 制造业 score=63.0 RPS=33.17 纯筑底股
+MATCH 002697 红旗连锁 F 批发零售 score=86.5 RPS=4.02 纯筑底股
+MATCH 002701 奥瑞金 C 制造业 score=86.5 RPS=26.13 纯筑底股
+MATCH 002702 海欣食品 C 制造业 score=95.0 RPS=1.01 纯筑底股
+MATCH 002703 浙江世宝 C 制造业 score=78.5 RPS=76.38 纯筑底股
+MATCH 002705 新宝股份 C 制造业 score=85.0 RPS=34.67 纯筑底股
+MATCH 002707 众信旅游 L 商务服务 score=85.0 RPS=22.61 纯筑底股
+MATCH 002712 思美传媒 L 商务服务 score=69.5 RPS=43.72 纯筑底股
+MATCH 002714 牧原股份 A 农林牧渔 score=60.19 RPS=9.55 纯筑底股
+MATCH 002715 登云股份 C 制造业 score=69.0 RPS=31.16 纯筑底股
+MATCH 002716 湖南白银 C 制造业 score=105.0 RPS=89.95 纯筑底股
+MATCH 002721 金一文化 C 制造业 score=69.0 RPS=22.11 纯筑底股
+MATCH 002722 物产金轮 C 制造业 score=91.5 RPS=44.72 纯筑底股
+MATCH 002723 小崧股份 C 制造业 score=118.5 RPS=56.78 纯筑底股
+MATCH 002724 海洋王 C 制造业 score=85.0 RPS=23.12 纯筑底股
+MATCH 002727 一心堂 F 批发零售 score=86.5 RPS=47.74 纯筑底股
+MATCH 002728 特一药业 C 制造业 score=89.5 RPS=14.57 纯筑底股
+MATCH 002732 燕塘乳业 C 制造业 score=85.0 RPS=21.61 纯筑底股
+MATCH 002734 利民股份 C 制造业 score=114.0 RPS=76.88 纯筑底股
+MATCH 002736 国信证券 J 金融业 score=85.0 RPS=30.65 纯筑底股
+MATCH 002737 葵花药业 C 制造业 score=66.5 RPS=29.15 纯筑底股
+MATCH 002739 儒意电影 R 文化传播 score=85.0 RPS=12.56 纯筑底股
+MATCH 002743 富煌钢构 C 制造业 score=66.5 RPS=30.15 纯筑底股
+MATCH 002746 仙坛股份 C 制造业 score=71.16 RPS=50.25 纯筑底股
+MATCH 002748 世龙实业 C 制造业 score=92.5 RPS=56.28 纯筑底股
+MATCH 002749 国光股份 C 制造业 score=66.5 RPS=13.57 纯筑底股
+MATCH 002752 昇兴股份 C 制造业 score=121.0 RPS=40.7 纯筑底股
+MATCH 002753 永东股份 C 制造业 score=66.2 RPS=51.76 纯筑底股
+MATCH 002756 永兴材料 C 制造业 score=79.64 RPS=81.91 纯筑底股
+MATCH 002757 南兴股份 C 制造业 score=145.0 RPS=85.43 高质量过渡态
+MATCH 002758 浙农股份 F 批发零售 score=90.5 RPS=37.19 纯筑底股
+MATCH 002759 天际股份 C 制造业 score=68.63 RPS=45.23 纯筑底股
+MATCH 002761 浙江建投 E 建筑业 score=86.5 RPS=41.21 纯筑底股
+MATCH 002763 汇洁股份 C 制造业 score=127.0 RPS=73.87 纯筑底股
+MATCH 002765 蓝黛科技 C 制造业 score=85.0 RPS=9.05 纯筑底股
+MATCH 002767 先锋电子 C 制造业 score=90.5 RPS=35.18 纯筑底股
+MATCH 002769 普路通 L 商务服务 score=88.0 RPS=3.02 纯筑底股
+MATCH 002772 众兴菌业 A 农林牧渔 score=111.15 RPS=69.85 纯筑底股
+MATCH 002773 康弘药业 C 制造业 score=73.29 RPS=8.04 纯筑底股
+MATCH 002775 文科股份 E 建筑业 score=84.5 RPS=66.83 纯筑底股
+MATCH 002777 久远银海 I 信息技术 score=65.0 RPS=23.62 纯筑底股
+MATCH 002780 三夫户外 F 批发零售 score=98.0 RPS=54.77 纯筑底股
+MATCH 002783 凯龙股份 C 制造业 score=85.0 RPS=40.2 纯筑底股
+MATCH 002785 万里石 C 制造业 score=104.5 RPS=74.37 纯筑底股
+MATCH 002786 银宝山新 C 制造业 score=64.5 RPS=60.8 纯筑底股
+MATCH 002788 鹭燕医药 F 批发零售 score=97.0 RPS=60.3 纯筑底股
+MATCH 002790 瑞尔特 C 制造业 score=88.0 RPS=5.53 纯筑底股
+MATCH 002791 坚朗五金 C 制造业 score=85.0 RPS=3.52 纯筑底股
+MATCH 002792 通宇通讯 C 制造业 score=88.28 RPS=68.34 纯筑底股
+MATCH 002793 罗欣药业 C 制造业 score=86.5 RPS=35.68 纯筑底股
+MATCH 002795 永和智控 C 制造业 score=82.53 RPS=75.38 纯筑底股
+MATCH 002796 世嘉科技 C 制造业 score=68.5 RPS=95.98 纯筑底股
+MATCH 002797 第一创业 J 金融业 score=90.5 RPS=54.27 纯筑底股
+MATCH 002799 环球印务 C 制造业 score=69.5 RPS=20.6 纯筑底股
+MATCH 002800 天顺股份 G 运输仓储 score=78.0 RPS=70.85 纯筑底股
+MATCH 002801 微光股份 C 制造业 score=64.5 RPS=64.32 纯筑底股
+MATCH 002802 洪汇新材 C 制造业 score=78.0 RPS=65.33 纯筑底股
+MATCH 002807 江阴银行 J 金融业 score=109.53 RPS=61.81 纯筑底股
+MATCH 002809 红墙股份 C 制造业 score=67.5 RPS=27.64 纯筑底股
+MATCH 002810 山东赫达 C 制造业 score=116.03 RPS=95.48 高质量过渡态
+MATCH 002811 郑中设计 M 科研服务 score=91.0 RPS=52.26 纯筑底股
+MATCH 002813 路畅科技 C 制造业 score=68.0 RPS=11.56 纯筑底股
+  Pass 2 progress: 200/200, matches=135
+Saved 135 SEPA Stage 1 candidates to batch_results/stage1_1000.csv
+Merging current batch results...
+Merged: 4 trend candidates, 36 SEPA Stage 2 candidates, 836 SEPA Stage 1 candidates
+
+Batch 7: offset=1200, limit=200
+  0%|          | 0/17 [00:00<?, ?it/s]  6%|▌         | 1/17 [00:00<00:02,  5.84it/s] 12%|█▏        | 2/17 [00:00<00:02,  5.53it/s] 18%|█▊        | 3/17 [00:00<00:02,  5.45it/s] 24%|██▎       | 4/17 [00:00<00:02,  5.51it/s] 29%|██▉       | 5/17 [00:00<00:02,  5.45it/s] 35%|███▌      | 6/17 [00:01<00:02,  5.45it/s] 41%|████      | 7/17 [00:01<00:02,  4.87it/s] 47%|████▋     | 8/17 [00:01<00:01,  5.09it/s] 53%|█████▎    | 9/17 [00:01<00:01,  5.15it/s] 59%|█████▉    | 10/17 [00:01<00:01,  5.28it/s] 65%|██████▍   | 11/17 [00:02<00:01,  5.27it/s] 71%|███████   | 12/17 [00:02<00:00,  5.43it/s] 76%|███████▋  | 13/17 [00:02<00:00,  5.46it/s] 82%|████████▏ | 14/17 [00:02<00:00,  5.30it/s] 88%|████████▊ | 15/17 [00:02<00:00,  5.11it/s] 94%|█████████▍| 16/17 [00:03<00:00,  5.23it/s]100%|██████████| 17/17 [00:03<00:00,  5.38it/s]                                               
