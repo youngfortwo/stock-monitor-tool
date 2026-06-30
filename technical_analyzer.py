@@ -689,6 +689,74 @@ def analyze_all_patterns(df: pd.DataFrame) -> dict:
     }
 
 
+def detect_divergences(df: pd.DataFrame, lookback: int = 80) -> dict:
+    """检测 MACD 背离 和 RSI 背离——实战中最关键的转势信号。
+    
+    背离逻辑:
+    - 顶背离: 价格创新高，但指标（MACD/RSI）反而走低 → 上涨动能衰竭，看跌
+    - 底背离: 价格创新低，但指标（MACD/RSI）反而走高 → 下跌动能衰竭，看涨
+    """
+    recent = df.iloc[-lookback:]
+
+    def local_max(s, w=5):
+        return s[s == s.rolling(w * 2 + 1, center=True).max()]
+
+    def local_min(s, w=5):
+        return s[s == s.rolling(w * 2 + 1, center=True).min()]
+
+    result = {"macd_顶背离": False, "macd_底背离": False, "macd_说明": "无MACD背离",
+              "rsi_顶背离": False, "rsi_底背离": False, "rsi_说明": "无RSI背离"}
+
+    price_peaks = local_max(recent["high"])
+    price_troughs = local_min(recent["low"])
+
+    # ---------- MACD 背离 ----------
+    if len(price_peaks) >= 2:
+        dt1, dt2 = price_peaks.index[-2], price_peaks.index[-1]
+        p1, p2 = float(price_peaks.iloc[-2]), float(price_peaks.iloc[-1])
+        mid1 = recent.loc[max(recent.index[0], dt1 - pd.Timedelta(days=6)):dt1 + pd.Timedelta(days=6), "dif"]
+        mid2 = recent.loc[max(recent.index[0], dt2 - pd.Timedelta(days=6)):dt2 + pd.Timedelta(days=6), "dif"]
+        md1, md2 = float(mid1.max()), float(mid2.max())
+        if p2 > p1 * 1.01 and md2 < md1 * 0.95:
+            result["macd_顶背离"] = True
+            result["macd_说明"] = (f"价格创新高({p2:.2f}>{p1:.2f})，但MACD DIF走低({md2:.3f}<{md1:.3f})，上涨动能衰竭")
+
+    if len(price_troughs) >= 2:
+        dt1, dt2 = price_troughs.index[-2], price_troughs.index[-1]
+        p1, p2 = float(price_troughs.iloc[-2]), float(price_troughs.iloc[-1])
+        mid1 = recent.loc[max(recent.index[0], dt1 - pd.Timedelta(days=6)):dt1 + pd.Timedelta(days=6), "dif"]
+        mid2 = recent.loc[max(recent.index[0], dt2 - pd.Timedelta(days=6)):dt2 + pd.Timedelta(days=6), "dif"]
+        md1, md2 = float(mid1.min()), float(mid2.min())
+        if p2 < p1 * 0.99 and md2 > md1 * 1.05:
+            result["macd_底背离"] = True
+            desc = f"价格创新低({p2:.2f}<{p1:.2f})，但MACD DIF走高({md2:.3f}>{md1:.3f})，下跌动能衰竭"
+            result["macd_说明"] = f"{result['macd_说明']}；{desc}" if result["macd_顶背离"] else desc
+
+    # ---------- RSI 背离 ----------
+    if len(price_peaks) >= 2:
+        dt1, dt2 = price_peaks.index[-2], price_peaks.index[-1]
+        p1, p2 = float(price_peaks.iloc[-2]), float(price_peaks.iloc[-1])
+        r1 = recent.loc[max(recent.index[0], dt1 - pd.Timedelta(days=6)):dt1 + pd.Timedelta(days=6), "rsi"]
+        r2 = recent.loc[max(recent.index[0], dt2 - pd.Timedelta(days=6)):dt2 + pd.Timedelta(days=6), "rsi"]
+        rv1, rv2 = float(r1.max()), float(r2.max())
+        if p2 > p1 * 1.01 and rv2 < rv1 - 2:
+            result["rsi_顶背离"] = True
+            result["rsi_说明"] = (f"价格新高({p2:.2f})但RSI走低({rv2:.0f}<{rv1:.0f})，多头力量衰竭")
+
+    if len(price_troughs) >= 2:
+        dt1, dt2 = price_troughs.index[-2], price_troughs.index[-1]
+        p1, p2 = float(price_troughs.iloc[-2]), float(price_troughs.iloc[-1])
+        r1 = recent.loc[max(recent.index[0], dt1 - pd.Timedelta(days=6)):dt1 + pd.Timedelta(days=6), "rsi"]
+        r2 = recent.loc[max(recent.index[0], dt2 - pd.Timedelta(days=6)):dt2 + pd.Timedelta(days=6), "rsi"]
+        rv1, rv2 = float(r1.min()), float(r2.min())
+        if p2 < p1 * 0.99 and rv2 > rv1 + 2:
+            result["rsi_底背离"] = True
+            desc = f"价格新低({p2:.2f})但RSI走高({rv2:.0f}>{rv1:.0f})，空头力量衰竭"
+            result["rsi_说明"] = f"{result['rsi_说明']}；{desc}" if result["rsi_顶背离"] else desc
+
+    return result
+
+
 def analyze_volume_price(df: pd.DataFrame) -> dict:
     latest = df.iloc[-1]
     result = {}
@@ -720,19 +788,30 @@ def analyze_volume_price(df: pd.DataFrame) -> dict:
         "价格趋势": price_trend, "量能趋势": vol_trend,
         "配合结论": cooperation, "配合度评分": coop_score
     }
-    window = 30
     divergence = {"顶背离": False, "底背离": False, "说明": "无量价背离"}
-    if len(df) >= window:
-        period = df.iloc[-window:]
-        price_new_high = latest["close"] >= period["close"].max() * 0.98
-        vol_new_high = latest["volume"] >= period["volume"].max() * 0.9
-        price_new_low = latest["close"] <= period["close"].min() * 1.02
-        if price_new_high and not vol_new_high:
+    v_recent = df.iloc[-60:]
+    roll = 11
+    vp_max = v_recent["close"] == v_recent["close"].rolling(roll, center=True).max()
+    vp_min = v_recent["close"] == v_recent["close"].rolling(roll, center=True).min()
+    price_peaks_v = v_recent[vp_max]
+    price_troughs_v = v_recent[vp_min]
+    if len(price_peaks_v) >= 2:
+        dt1, dt2 = price_peaks_v.index[-2], price_peaks_v.index[-1]
+        p1, p2 = float(price_peaks_v["close"].iloc[-2]), float(price_peaks_v["close"].iloc[-1])
+        v1 = v_recent.loc[max(v_recent.index[0], dt1 - pd.Timedelta(days=5)):dt1 + pd.Timedelta(days=5), "volume"]
+        v2 = v_recent.loc[max(v_recent.index[0], dt2 - pd.Timedelta(days=5)):dt2 + pd.Timedelta(days=5), "volume"]
+        if p2 > p1 * 1.01 and float(v2.max()) < float(v1.max()) * 0.8:
             divergence["顶背离"] = True
-            divergence["说明"] = "股价接近阶段新高但量能未同步放大，上涨动力不足"
-        if price_new_low and latest["volume"] <= period["volume"].min() * 1.1:
+            divergence["说明"] = f"价格新高({p2:.2f} > {p1:.2f})，但成交量未同步放大，上涨动力不足"
+    if len(price_troughs_v) >= 2:
+        dt1, dt2 = price_troughs_v.index[-2], price_troughs_v.index[-1]
+        p1, p2 = float(price_troughs_v["close"].iloc[-2]), float(price_troughs_v["close"].iloc[-1])
+        v1 = v_recent.loc[max(v_recent.index[0], dt1 - pd.Timedelta(days=5)):dt1 + pd.Timedelta(days=5), "volume"]
+        v2 = v_recent.loc[max(v_recent.index[0], dt2 - pd.Timedelta(days=5)):dt2 + pd.Timedelta(days=5), "volume"]
+        if p2 < p1 * 0.99 and float(v2.max()) < float(v1.max()) * 0.8:
+            desc = f"价格新低({p2:.2f} < {p1:.2f})，但成交缩量，抛压逐步衰竭"
             divergence["底背离"] = True
-            divergence["说明"] = "股价接近阶段新低但量能未同步放大，抛压逐步衰竭"
+            divergence["说明"] = desc if not divergence["顶背离"] else f"{divergence['说明']}；{desc}"
     result["量价背离"] = divergence
     patterns = []
     if latest["volume"] >= df.iloc[-60:]["volume"].max() * 0.95:
@@ -771,6 +850,7 @@ def analyze_technical(code: str) -> dict:
     vp = get_volume_profile(df)
     buy_rr = calculate_risk_reward(df, "buy")
     sell_rr = calculate_risk_reward(df, "sell")
+    divergences = detect_divergences(df)
 
     return {
         "code": code,
@@ -804,6 +884,7 @@ def analyze_technical(code: str) -> dict:
         "trend": trend,
         "signals": signals,
         "patterns": patterns,
+        "divergences": divergences,
         "volume_price": vol_price,
         "volume_profile": vp,
         "risk_reward": {"buy": buy_rr, "sell": sell_rr},

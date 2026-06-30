@@ -2,7 +2,8 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
-PYTHON="/usr/bin/python3"
+PYTHON="${PYTHON_BIN:-/opt/homebrew/bin/python3.12}"
+export DYLD_LIBRARY_PATH="/opt/homebrew/opt/expat/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
 TOTAL="${1:-500}"
 BATCH_SIZE="${2:-100}"
 PORT="${PORT:-8000}"
@@ -32,7 +33,7 @@ def merge_trend(pattern: str, output: str, sort_columns: list[str]) -> int:
             frame["code"] = frame["code"].astype(str).str.zfill(6)
             frames.append(frame)
     if not frames:
-        Path(output).write_text("", encoding="utf-8-sig")
+        Path(output).write_text("", encoding="utf-8")
         return 0
 
     result = pd.concat(frames, ignore_index=True)
@@ -40,7 +41,21 @@ def merge_trend(pattern: str, output: str, sort_columns: list[str]) -> int:
     existing_sort_columns = [column for column in sort_columns if column in result.columns]
     if existing_sort_columns:
         result = result.sort_values(existing_sort_columns, ascending=[False] * len(existing_sort_columns))
-    result.to_csv(output, index=False, encoding="utf-8-sig")
+
+    # 清洗 numpy 残留 + Python dict 风格（旧批次产物），确保 JSON 列前端可解析
+    _CLEAN_COLS = ["conditions", "cup_handle_details", "vcp_details", "pullback_details"]
+    for col in _CLEAN_COLS:
+        if col in result.columns:
+            result[col] = result[col].astype(str).str.replace(r"np\.True_", "true", regex=True)
+            result[col] = result[col].astype(str).str.replace(r"np\.False_", "false", regex=True)
+            result[col] = result[col].astype(str).str.replace(r"np\.float64\(([\d.]+)\)", r"\1", regex=True)
+            result[col] = result[col].astype(str).str.replace(r"np\.int64\((\d+)\)", r"\1", regex=True)
+            # Python 风格 dict → JSON: 单引号→双引号, True→true, False→false
+            result[col] = result[col].astype(str).str.replace("'", '"', regex=False)
+            result[col] = result[col].astype(str).str.replace(r"\bTrue\b", "true", regex=True)
+            result[col] = result[col].astype(str).str.replace(r"\bFalse\b", "false", regex=True)
+
+    result.to_csv(output, index=False, encoding="utf-8")
     return len(result)
 
 
@@ -57,30 +72,49 @@ def merge_sepa_with_rps(pattern: str, output: str, sort_columns: list[str]) -> i
             frame["code"] = frame["code"].astype(str).str.zfill(6)
             frames.append(frame)
     if not frames:
-        Path(output).write_text("", encoding="utf-8-sig")
+        Path(output).write_text("", encoding="utf-8")
         return 0
 
     result = pd.concat(frames, ignore_index=True)
     result = result.drop_duplicates(subset=["code"], keep="first")
 
-    if "return_120d_pct" in result.columns:
+    # 优先用扫描器输出的 rps_120（全市场排名），没有则用本地 return_120d_pct 排名
+    if "rps_120" in result.columns and result["rps_120"].notna().sum() >= 5:
+        # 扫描器已有全市场 RPS，直接使用
+        pass
+    elif "return_120d_pct" in result.columns:
         valid = result["return_120d_pct"].notna()
         if valid.sum() >= 5:
             rps_values = result.loc[valid, "return_120d_pct"]
-            result.loc[valid, "rps"] = rps_values.rank(pct=True) * 100
-            result["rps"] = result["rps"].round(2)
-            result = result[result["rps"] >= 70]
+            result["rps_120"] = (rps_values.rank(pct=True) * 100).round(1)
         else:
-            result["rps"] = 0
+            result["rps_120"] = 0.0
     else:
-        result["rps"] = 0
+        result["rps_120"] = 0.0
+
+    # 过滤 RPS < 70 的弱股（仅当有足够数据时）
+    if result["rps_120"].notna().sum() >= 5:
+        result = result[result["rps_120"] >= 70]
 
     existing_sort_columns = [column for column in sort_columns if column in result.columns]
     if existing_sort_columns:
         result = result.sort_values(existing_sort_columns, ascending=[False] * len(existing_sort_columns))
-    result.to_csv(output, index=False, encoding="utf-8-sig")
-    return len(result)
 
+    # 清洗 numpy 残留 + Python dict 风格（旧批次产物），确保 JSON 列前端可解析
+    _CLEAN_COLS = ["conditions", "cup_handle_details", "vcp_details", "pullback_details"]
+    for col in _CLEAN_COLS:
+        if col in result.columns:
+            result[col] = result[col].astype(str).str.replace(r"np\.True_", "true", regex=True)
+            result[col] = result[col].astype(str).str.replace(r"np\.False_", "false", regex=True)
+            result[col] = result[col].astype(str).str.replace(r"np\.float64\(([\d.]+)\)", r"\1", regex=True)
+            result[col] = result[col].astype(str).str.replace(r"np\.int64\((\d+)\)", r"\1", regex=True)
+            # Python 风格 dict → JSON: 单引号→双引号, True→true, False→false
+            result[col] = result[col].astype(str).str.replace("'", '"', regex=False)
+            result[col] = result[col].astype(str).str.replace(r"\bTrue\b", "true", regex=True)
+            result[col] = result[col].astype(str).str.replace(r"\bFalse\b", "false", regex=True)
+
+    result.to_csv(output, index=False, encoding="utf-8")
+    return len(result)
 
 trend_count = merge_trend("trend_*.csv", "test_candidates.csv", ["score", "amount_cny"])
 sepa_count = merge_sepa_with_rps("sepa_*.csv", "sepa_stage2_candidates_test.csv", ["score", "amount_cny"])

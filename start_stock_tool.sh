@@ -3,6 +3,10 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
+# Python 3.12 需要 expat 动态库路径修复
+export PYTHON_BIN="${PYTHON_BIN:-/opt/homebrew/bin/python3.12}"
+export DYLD_LIBRARY_PATH="/opt/homebrew/opt/expat/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+
 TOTAL="${1:-1000}"
 BATCH_SIZE="${2:-200}"
 PORT="${PORT:-8001}"
@@ -22,8 +26,9 @@ echo "Data refresh is running in the background. PID=${REFRESH_PID}"
 
 echo
 echo "Step 2/2: Starting dashboard server..."
+echo "Python: ${PYTHON_BIN}"
 echo "Open: http://localhost:${PORT}/stock_dashboard.html"
 echo "Refresh progress is shown on the dashboard and logged to start_stock_tool_data_refresh.log"
 echo
 
-PORT="${PORT}" /usr/bin/python3 stock_server.py
+PORT="${PORT}" "${PYTHON_BIN}" -W ignore::FutureWarning stock_server.py

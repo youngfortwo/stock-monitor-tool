@@ -25,7 +25,31 @@ main {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 16px;
-  margin-bottom: 24px;
+  margin-bottom: 10px;
+}
+
+.summary-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.btn-refresh {
+  padding: 4px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-refresh:hover { background: #e2e8f0; }
+.btn-refresh:active { background: #cbd5e1; }
+.btn-refresh.spin {
+  pointer-events: none;
+  opacity: 0.7;
 }
 
 .card {
@@ -392,6 +416,10 @@ a.stock-link:hover {
 <div class="muted">本页面读取本地 CSV，并支持通过本地 API 实时评估 SEPA 第二阶段，仅用于候选池监控，不构成投资建议。</div>
 </header>
 <main>
+<div class="summary-header">
+  <span class="muted" style="font-size:13px;">实时数据每 60s 自动刷新</span>
+  <button class="btn-refresh" id="btn-refresh-market" onclick="refreshMarketData()" title="手动刷新恐慌指数/涨跌家数">↻ 刷新</button>
+</div>
 <section class="summary">
 <div class="card">
 <div class="label">恐慌指数</div>
@@ -406,10 +434,74 @@ a.stock-link:hover {
 <div class="value" id="median-change">-</div>
 </div>
 <div class="card">
-<div class="label">下次财报截止</div>
-<div class="value" style="font-size: 18px;" id="next-report">-</div>
-</div>
+    <div class="label">下次财报截止</div>
+    <div class="value" style="font-size: 18px;" id="next-report">-</div>
+  </div>
 </section>
+
+<!-- 宏观资金信号 -->
+<style>
+.macro-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+.macro-card {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(20, 32, 54, 0.08);
+  padding: 16px;
+}
+.macro-card h3 {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  color: #374151;
+}
+.macro-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-size: 13px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.macro-label { color: #657188; }
+.macro-value { font-weight: 600; }
+.macro-up { color: #c2410c; }
+.macro-down { color: #12805c; }
+.macro-summary {
+  font-size: 12px;
+  color: #475569;
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: #f0f4ff;
+  border-radius: 6px;
+  line-height: 1.5;
+}
+</style>
+<div class="summary-header" style="margin-top: 8px;">
+  <span class="muted" style="font-size:13px;">宏观资金信号（数据源: akshare）</span>
+  <button class="btn-refresh" id="btn-refresh-macro" onclick="refreshMacroData()" title="手动刷新宏观数据">↻ 刷新</button>
+</div>
+<section class="macro-cards" id="macro-section">
+  <div class="macro-card">
+    <h3>融资融券（沪市）</h3>
+    <div class="muted" style="font-size:12px;" id="macro-margin">加载中…</div>
+  </div>
+  <div class="macro-card">
+    <h3>M1/M2 剪刀差</h3>
+    <div class="muted" style="font-size:12px;" id="macro-m1m2">加载中…</div>
+  </div>
+  <div class="macro-card">
+    <h3>新增投资者（月度）</h3>
+    <div class="muted" style="font-size:12px;" id="macro-investor">加载中…</div>
+  </div>
+  <div class="macro-card">
+    <h3>资金信号总结</h3>
+    <div class="macro-summary" id="macro-summary">加载中…</div>
+  </div>
+</section>
+
 <section class="tool-panel">
   <h2>市场技术分析</h2>
   <div class="muted" style="margin-bottom: 10px;">
@@ -446,24 +538,24 @@ a.stock-link:hover {
   </div>
   <div style="margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
      <span class="muted" style="font-size: 12px;">筛选：</span>
-     <input type="text" id="filter-code-s1" placeholder="代码…" style="padding:4px 8px; border:1px solid #444; border-radius:6px; background:#2a2a3a; color:#e0e0e0; font-size:12px; width:80px;" />
-     <select id="filter-industry" style="padding: 4px 8px; border: 1px solid #444; border-radius: 6px; background: #2a2a3a; color: #e0e0e0; font-size: 12px;"><option value="">行业</option></select>
-     <select id="filter-board" style="padding: 4px 8px; border: 1px solid #444; border-radius: 6px; background: #2a2a3a; color: #e0e0e0; font-size: 12px;">
+     <input type="text" id="filter-code-s1" placeholder="代码…" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#172033;font-size:12px;width:80px;" />
+     <select id="filter-industry" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#172033;font-size:12px;"><option value="">行业</option></select>
+     <select id="filter-board" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#172033;font-size:12px;">
        <option value="">市场</option><option value="主板">主板</option><option value="创业板">创业板</option><option value="科创板">科创板</option><option value="北交所">北交所</option>
      </select>
-     <select id="filter-cup" style="padding: 4px 8px; border: 1px solid #444; border-radius: 6px; background: #2a2a3a; color: #e0e0e0; font-size: 12px;">
+     <select id="filter-cup-s1" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#172033;font-size:12px;">
        <option value="">杯柄</option><option value="✅">有</option>
      </select>
-     <select id="filter-vcp" style="padding: 4px 8px; border: 1px solid #444; border-radius: 6px; background: #2a2a3a; color: #e0e0e0; font-size: 12px;">
+     <select id="filter-vcp-s1" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#172033;font-size:12px;">
        <option value="">VCP</option><option value="✅">有</option>
      </select>
-     <select id="filter-fin" style="padding: 4px 8px; border: 1px solid #444; border-radius: 6px; background: #2a2a3a; color: #e0e0e0; font-size: 12px;">
+     <select id="filter-fin" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#172033;font-size:12px;">
        <option value="">财务</option><option value="✅">通过</option>
      </select>
-     <select id="filter-label" style="padding: 4px 8px; border: 1px solid #444; border-radius: 6px; background: #2a2a3a; color: #e0e0e0; font-size: 12px;">
+     <select id="filter-label" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#172033;font-size:12px;">
        <option value="">标签</option><option value="高质量过渡态">高质量过渡态</option><option value="基础过渡态">基础过渡态</option><option value="纯筑底股">纯筑底股</option>
      </select>
-     <button id="filter-reset" style="padding: 4px 12px; border: 1px solid #555; border-radius: 6px; background: #333; color: #ccc; font-size: 12px; cursor: pointer;">重置</button>
+     <button id="filter-reset" style="padding:4px 12px;border:1px solid #cbd5e1;border-radius:6px;background:#f1f5f9;color:#334155;font-size:12px;cursor:pointer;">重置</button>
    </div>
   <div class="scan-progress-inline" id="scan-inline-s1" style="display:none;">
     <span class="label">状态：<strong id="scan-status-s1">-</strong></span>
@@ -518,11 +610,11 @@ a.stock-link:hover {
   </div>
   <div style="margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
      <span class="muted" style="font-size: 12px;">筛选：</span>
-     <input type="text" id="filter-code-vb" placeholder="代码…" style="padding:4px 8px; border:1px solid #444; border-radius:6px; background:#2a2a3a; color:#e0e0e0; font-size:12px; width:80px;" />
-     <select id="filter-board-vb" style="padding: 4px 8px; border: 1px solid #444; border-radius: 6px; background: #2a2a3a; color: #e0e0e0; font-size: 12px;">
+     <input type="text" id="filter-code-vb" placeholder="代码…" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#172033;font-size:12px;width:80px;" />
+     <select id="filter-board-vb" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#172033;font-size:12px;">
        <option value="">市场</option><option value="主板">主板</option><option value="创业板">创业板</option><option value="科创板">科创板</option><option value="北交所">北交所</option>
      </select>
-     <button id="filter-reset-vb" style="padding: 4px 12px; border: 1px solid #555; border-radius: 6px; background: #333; color: #ccc; font-size: 12px; cursor: pointer;">重置</button>
+     <button id="filter-reset-vb" style="padding:4px 12px;border:1px solid #cbd5e1;border-radius:6px;background:#f1f5f9;color:#334155;font-size:12px;cursor:pointer;">重置</button>
    </div>
   <div class="scan-progress-inline" id="scan-inline-vb" style="display:none;">
     <span class="label">状态：<strong id="scan-status-vb">-</strong></span>
@@ -570,15 +662,15 @@ a.stock-link:hover {
     </div>
   </div>
   <div class="muted" style="margin-bottom: 10px;">
-    规则：9项核心条件全部满足（close>MA50/150/200，均线多头排列，MA200上行，距52周低点≥30%，距52周高点≤25%）。杯柄和VCP为独立加分维度（趋势前置：股价站上MA200且MA200上行）。加分项：杯柄突破、VCP波动收缩、回踩均线确认、业绩加速。
+    规则：5项核心条件（close>MA200，MA200上行，距52周低点≥30%，距52周高点≤25%，120日RS强度≥80）。杯柄/VCP为加分维度。加分项：回踩均线、业绩加速。
   </div>
   <div style="margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
      <span class="muted" style="font-size: 12px;">筛选：</span>
-     <input type="text" id="filter-code-s2" placeholder="代码…" style="padding:4px 8px; border:1px solid #444; border-radius:6px; background:#2a2a3a; color:#e0e0e0; font-size:12px; width:80px;" />
-     <select id="filter-board-s2" style="padding: 4px 8px; border: 1px solid #444; border-radius: 6px; background: #2a2a3a; color: #e0e0e0; font-size: 12px;">
+     <input type="text" id="filter-code-s2" placeholder="代码…" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#172033;font-size:12px;width:80px;" />
+     <select id="filter-board-s2" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#172033;font-size:12px;">
        <option value="">市场</option><option value="主板">主板</option><option value="创业板">创业板</option><option value="科创板">科创板</option><option value="北交所">北交所</option>
      </select>
-     <button id="filter-reset-s2" style="padding: 4px 12px; border: 1px solid #555; border-radius: 6px; background: #333; color: #ccc; font-size: 12px; cursor: pointer;">重置</button>
+     <button id="filter-reset-s2" style="padding:4px 12px;border:1px solid #cbd5e1;border-radius:6px;background:#f1f5f9;color:#334155;font-size:12px;cursor:pointer;">重置</button>
    </div>
   <div class="scan-progress-inline" id="scan-inline-s2" style="display:none;">
     <span class="label">状态：<strong id="scan-status-s2">-</strong></span>
@@ -597,8 +689,7 @@ a.stock-link:hover {
         <th>日期</th>
         <th>收盘价</th>
         <th>市盈率</th>
-        <th>MA50</th>
-        <th>MA150</th>
+        <th>RS强度</th>
         <th>MA200</th>
         <th>距52周低点</th>
         <th>距52周高点</th>
@@ -606,12 +697,13 @@ a.stock-link:hover {
         <th>杯柄</th>
         <th>VCP</th>
         <th>回踩</th>
-        <th>财务加速</th>
+        <th>业绩</th>
+        <th>ROE</th>
         <th>评分</th>
       </tr>
     </thead>
     <tbody id="sepa-body">
-      <tr><td colspan="18">Loading...</td></tr>
+      <tr><td colspan="19">Loading...</td></tr>
     </tbody>
   </table>
   <div class="pagination">
@@ -632,6 +724,7 @@ const tableState = {
 
 const scanBatchTracker = { s1: 0, s2: 0, vb: 0 };
 function parseCsv(text) {
+  if (text.length > 0 && text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
   const rows = [];
   let current = "";
   let inQuotes = false;
@@ -639,7 +732,12 @@ function parseCsv(text) {
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
     if (ch === '"') {
-      inQuotes = !inQuotes;
+      if (inQuotes && text[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
     } else if (ch === "," && !inQuotes) {
       row.push(current);
       current = "";
@@ -700,6 +798,18 @@ function exchangePrefix(code) {
   return "SZ";
 }
 
+function cupHit(row) {
+  if (!row.cup_handle_details || row.cup_handle_details === "{}") return false;
+  try { const d = JSON.parse(String(row.cup_handle_details).replace(/'/g, '"')); return !!d.cup_high; } catch { return false; }
+}
+function vcpHit(row) {
+  if (!row.vcp_details || row.vcp_details === "{}") return false;
+  try { const d = JSON.parse(String(row.vcp_details).replace(/'/g, '"')); return d.vcp_valid === true; } catch { return false; }
+}
+function vcpHitStr(row) {
+  return vcpHit(row) ? '✅' : '-';
+}
+
 function renderSepaRows() {
   const tbody = document.getElementById("sepa-body");
   const { rows, page } = tableState.sepa;
@@ -730,14 +840,8 @@ function renderSepaRows() {
     .map((row) => {
       const code = normalizeCode(row.code);
       const link = `https://xueqiu.com/S/${exchangePrefix(code)}${code}`;
-      const chHit = (() => {
-        if (!row.cup_handle_details || row.cup_handle_details === "{}") return false;
-        try { const d = JSON.parse(row.cup_handle_details.replace(/'/g, '"')); return !!d.cup_high; } catch { return false; }
-      })();
-      const vcpHit = (() => {
-        if (!row.vcp_details || row.vcp_details === "{}") return false;
-        try { const d = JSON.parse(row.vcp_details.replace(/'/g, '"')); return d.vcp_valid === true; } catch { return false; }
-      })();
+      const chHit = cupHit(row);
+      const vcpOk = vcpHit(row);
       const pullbackHit = row.pullback_details && row.pullback_details !== "{}" && row.pullback_details !== "";
       return `
 <tr>
@@ -748,16 +852,16 @@ function renderSepaRows() {
   <td>${row.date || ""}</td>
   <td>${fmtNumber(row.close)}</td>
   <td>${fmtNumber(row.pe_ttm)}</td>
-  <td>${fmtNumber(row.ma50)}</td>
-  <td>${fmtNumber(row.ma150)}</td>
+  <td>${row.rps_120 != null ? Math.round(row.rps_120) : "-"}</td>
   <td>${fmtNumber(row.ma200)}</td>
   <td>${fmtPercent(row.pct_above_52w_low)}</td>
   <td>${fmtPercent(row.pct_below_52w_high)}</td>
   <td>${fmtPercent(row.return_120d_pct)}</td>
   <td>${chHit ? '✅' : '-'}</td>
-  <td>${vcpHit ? '✅' : '-'}</td>
+  <td>${vcpOk ? '✅' : '-'}</td>
   <td>${pullbackHit ? '✅' : '-'}</td>
   <td>${row.financial_pass === "True" || row.financial_pass === "true" ? "✅" : "-"}</td>
+  <td>${row.roe != null && row.roe !== '' ? Number(row.roe).toFixed(1) + '%' : '-'}</td>
   <td>${fmtNumber(row.score)}</td>
 </tr>
 `;
@@ -769,27 +873,38 @@ function renderSepaRows() {
 }
 
 async function loadSepaCandidates(keepPage = false) {
-  const response = await fetch("sepa_stage2_candidates_test.csv", { cache: "no-store" }).catch(() => null);
-  if (!response || !response.ok) {
-    tableState.sepa.rows = [];
+  try {
+    const url = "sepa_stage2_candidates_test.csv?t=" + Date.now();
+    const response = await fetch(url, { cache: "no-store" }).catch((e) => { console.error("SEPA fetch error:", e); return null; });
+    if (!response || !response.ok) {
+      console.warn("SEPA fetch failed:", response ? response.status : "no response");
+      tableState.sepa.rows = [];
+      if (!keepPage) tableState.sepa.page = 1;
+      renderSepaRows();
+      return;
+    }
+    const text = await response.text().catch((e) => { console.error("SEPA text error:", e); return ""; });
+    if (!text) {
+      console.warn("SEPA text empty");
+      tableState.sepa.rows = [];
+      if (!keepPage) tableState.sepa.page = 1;
+      renderSepaRows();
+      return;
+    }
+    console.log("SEPA CSV fetched:", text.length, "bytes, first 50:", text.slice(0, 50));
+    const rows = parseCsv(text);
+    console.log("SEPA parsed:", rows.length, "rows, first code:", rows.length ? rows[0].code : "NONE");
+    tableState.sepa.rows = rows;
     if (!keepPage) tableState.sepa.page = 1;
+    if (rows.length > 0 && rows[0].next_report_deadline) {
+      document.getElementById("next-report").textContent = rows[0].next_report_deadline;
+    }
     renderSepaRows();
-    return;
+    console.log("SEPA render done, tbody HTML length:", document.getElementById("sepa-body").innerHTML.length);
+  } catch (err) {
+    console.error("SEPA load error:", err);
+    document.getElementById("sepa-body").innerHTML = '<tr><td colspan="19">加载失败: ' + err.message + '</td></tr>';
   }
-  const text = await response.text().catch(() => "");
-  if (!text) {
-    tableState.sepa.rows = [];
-    if (!keepPage) tableState.sepa.page = 1;
-    renderSepaRows();
-    return;
-  }
-  const rows = parseCsv(text);
-  tableState.sepa.rows = rows;
-  if (!keepPage) tableState.sepa.page = 1;
-  if (rows.length > 0 && rows[0].next_report_deadline) {
-    document.getElementById("next-report").textContent = rows[0].next_report_deadline;
-  }
-  renderSepaRows();
 }
 
 function getFilterValues() {
@@ -797,8 +912,8 @@ function getFilterValues() {
     code: document.getElementById("filter-code-s1").value.trim(),
     industry: document.getElementById("filter-industry").value,
     board: document.getElementById("filter-board").value,
-    cup: document.getElementById("filter-cup").value,
-    vcp: document.getElementById("filter-vcp").value,
+    cup: document.getElementById("filter-cup-s1").value,
+    vcp: document.getElementById("filter-vcp-s1").value,
     fin: document.getElementById("filter-fin").value,
     label: document.getElementById("filter-label").value,
   };
@@ -813,8 +928,8 @@ function renderStage1Rows() {
   if (fv.code)          filtered = filtered.filter(r => (r.code || "").includes(fv.code));
   if (fv.industry)     filtered = filtered.filter(r => (r.industry || "") === fv.industry);
   if (fv.board)        filtered = filtered.filter(r => (r.board || "") === fv.board);
-  if (fv.cup)          filtered = filtered.filter(r => { try { const d = JSON.parse((r.cup_handle_details||'').replace(/'/g, '"')); return !!d.cup_high; } catch { return false; } });
-  if (fv.vcp)          filtered = filtered.filter(r => { try { const d = JSON.parse((r.vcp_details||'').replace(/'/g, '"')); return d.vcp_valid === true; } catch { return false; } });
+  if (fv.cup)          filtered = filtered.filter(r => chHit(r));
+  if (fv.vcp)          filtered = filtered.filter(r => vcpHit(r));
   if (fv.fin)          filtered = filtered.filter(r => r.financial_pass === "True" || r.financial_pass === "true");
   if (fv.label)        filtered = filtered.filter(r => (r.label || "") === fv.label);
 
@@ -839,14 +954,8 @@ function renderStage1Rows() {
     .map((row) => {
       const code = normalizeCode(row.code);
       const link = `https://xueqiu.com/S/${exchangePrefix(code)}${code}`;
-      const chHit = (() => {
-        if (!row.cup_handle_details || row.cup_handle_details === "{}") return false;
-        try { const d = JSON.parse(row.cup_handle_details.replace(/'/g, '"')); return !!d.cup_high; } catch { return false; }
-      })();
-      const vcpHit = (() => {
-        if (!row.vcp_details || row.vcp_details === "{}") return false;
-        try { const d = JSON.parse(row.vcp_details.replace(/'/g, '"')); return d.vcp_valid === true; } catch { return false; }
-      })();
+      const chHit = cupHit(row);
+      const vcpOk = vcpHit(row);
       const label = row.label || "";
       const labelClass = label === "高质量过渡态" ? "label-hq" : label === "基础过渡态" ? "label-base" : "label-pure";
       return `
@@ -863,7 +972,7 @@ function renderStage1Rows() {
   <td>${fmtPercent(row.ma200_change_pct)}</td>
   <td>${fmtPercent(row.range_pct)}</td>
   <td>${chHit ? '✅' : '-'}</td>
-  <td>${vcpHit ? '✅' : '-'}</td>
+  <td>${vcpOk ? '✅' : '-'}</td>
   <td>${row.financial_pass === "True" || row.financial_pass === "true" ? "✅" : "-"}</td>
   <td><span class="stage-tag ${labelClass}">${label}</span></td>
   <td>${fmtNumber(row.score)}</td>
@@ -1013,7 +1122,7 @@ async function loadScanProgress() {
       if (data.status === "done") {
         if (btn) { btn.disabled = false; btn.textContent = "手动拉取"; }
         scanBatchTracker[suffix] = 0;
-        if (loader) loader(false).catch(() => {});
+        if (loader) loader(true).catch(() => {});
       } else if (data.status === "running" && data.current_batch) {
         // Refresh table after each batch completes — keepPage=true 不重置页码
         const lastSeen = scanBatchTracker[suffix] || 0;
@@ -1027,19 +1136,307 @@ async function loadScanProgress() {
 }
 
 async function loadMarketBreadth() {
-  const response = await fetch("market_breadth.json", { cache: "no-store" }).catch(() => null);
-  if (!response || !response.ok) {
+  const resp = await fetch("/api/market_breadth", { cache: "no-store" }).catch(() => null);
+  if (!resp || !resp.ok) {
+    const fileResp = await fetch("market_breadth.json", { cache: "no-store" }).catch(() => null);
+    if (!fileResp || !fileResp.ok) return;
+    const data = await fileResp.json().catch(() => null);
+    if (!data) return;
+    updateBreadthUI(data);
     return;
   }
-  const data = await response.json().catch(() => null);
-  if (!data) {
-    return;
-  }
+  const data = await resp.json().catch(() => null);
+  if (!data) return;
+  updateBreadthUI(data);
+}
+
+function updateBreadthUI(data) {
   document.getElementById("panic-index").textContent = data.panic_index != null ? data.panic_index : "-";
   if (data.up_count != null && data.down_count != null && data.flat_count != null) {
     document.getElementById("market-breadth").textContent = `${data.up_count} / ${data.down_count} / ${data.flat_count}`;
   }
   document.getElementById("median-change").textContent = data.median_pct_change != null ? `${data.median_pct_change.toFixed(2)}%` : "-";
+}
+
+async function refreshMarketData() {
+  const btn = document.getElementById("btn-refresh-market");
+  btn.classList.add("spin");
+  btn.textContent = "⏳ 刷新中…";
+  try {
+    await loadMarketBreadth();
+  } finally {
+    btn.classList.remove("spin");
+    btn.textContent = "↻ 刷新";
+  }
+}
+
+async function refreshMacroData() {
+  const btn = document.getElementById("btn-refresh-macro");
+  btn.classList.add("spin");
+  btn.textContent = "⏳ 刷新中…";
+  try {
+    const resp = await fetch("/api/macro?force=true", { cache: "no-store" }).catch(() => null);
+    if (!resp || !resp.ok) return;
+    const data = await resp.json().catch(() => null);
+    if (!data) return;
+    updateMacroUI(data);
+  } finally {
+    btn.classList.remove("spin");
+    btn.textContent = "↻ 刷新";
+  }
+}
+
+async function loadMacroData() {
+  const resp = await fetch("/api/macro", { cache: "no-store" }).catch(() => null);
+  if (!resp || !resp.ok) return;
+  const data = await resp.json().catch(() => null);
+  if (!data) return;
+  updateMacroUI(data);
+}
+
+function updateMacroUI(data) {
+
+  // 融资融券卡片
+  const mg = data.margin || {};
+  let m = "";
+  if (mg["融资余额(亿)"]) {
+    const fmtSign = v => (v >= 0 ? "+" : "") + v;
+    m += `<div class="macro-row"><span class="macro-label">融资余额</span><span class="macro-value">${mg["融资余额(亿)"]}亿</span></div>`;
+    if (mg["融资余额5日变化(亿)"]) {
+      const cls = mg["融资余额5日变化(亿)"] >= 0 ? "macro-up" : "macro-down";
+      const label = mg["融资余额5日变化(亿)"] >= 0 ? "5日变化 ↑" : "5日变化 ↓";
+      m += `<div class="macro-row"><span class="macro-label">${label}</span><span class="macro-value ${cls}">${fmtSign(mg["融资余额5日变化(亿)"])}亿</span></div>`;
+    }
+    if (mg["融资余额20日变化(亿)"]) {
+      const cls = mg["融资余额20日变化(亿)"] >= 0 ? "macro-up" : "macro-down";
+      m += `<div class="macro-row"><span class="macro-label">20日变化</span><span class="macro-value ${cls}">${fmtSign(mg["融资余额20日变化(亿)"])}亿</span></div>`;
+    }
+    if (mg["当日融资买入(亿)"]) {
+      m += `<div class="macro-row"><span class="macro-label">当日买入</span><span class="macro-value">${mg["当日融资买入(亿)"]}亿</span></div>`;
+    }
+    m += `<div class="muted" style="font-size:11px;margin-top:4px;">数据日期：${mg["日期"] || "-"}</div>`;
+  }
+  document.getElementById("macro-margin").innerHTML = m || "无数据";
+
+  // M1/M2 剪刀差卡片
+  const mm = data.m1m2 || {};
+  let m1m2html = "";
+  const months = mm["月份"] || [];
+  const m1 = mm["M1增速"] || [];
+  const m2 = mm["M2增速"] || [];
+  const diff = mm["剪刀差"] || [];
+  if (months.length) {
+    m1m2html += '<div class="macro-row"><span class="macro-label">月份</span><span style="font-size:11px;">' + months.map(m => m.replace(/^(\d{4})\.(\d+)$/, "$1/$2")).join(" | ") + '</span></div>';
+    m1m2html += '<div class="macro-row"><span class="macro-label">M1增速</span><span class="macro-value">' + m1.join("% / ") + '%</span></div>';
+    m1m2html += '<div class="macro-row"><span class="macro-label">M2增速</span><span class="macro-value">' + m2.join("% / ") + '%</span></div>';
+    if (diff.length) {
+      const diffs = diff.map(d => (d >= 0 ? "+" : "") + d).join(" / ");
+      const lastDiff = diff[diff.length - 1];
+      const dCls = lastDiff > 0 ? "pass" : "fail";
+      m1m2html += '<div class="macro-row"><span class="macro-label">剪刀差(M1-M2)</span><span class="macro-value ' + dCls + '">' + diffs + '</span></div>';
+    }
+  }
+  document.getElementById("macro-m1m2").innerHTML = m1m2html || "无数据";
+
+  // 新增投资者卡片
+  const inv = data.investor || {};
+  let invHtml = "";
+  const invMonths = inv["月份"] || [];
+  const invNew = inv["新增(万户)"] || [];
+  const invYoY = inv["同比"] || [];
+  const invTotal = inv["期末总量(万户)"] || [];
+  const invAvgMC = inv["户均市值(万)"] || [];
+   if (invMonths.length) {
+    invHtml += '<div class="macro-row"><span class="macro-label">月份</span><span style="font-size:11px;">' + invMonths.join(" | ") + '</span></div>';
+    invHtml += '<div class="macro-row"><span class="macro-label">新增</span><span class="macro-value">' + invNew.map(v=>v!=null?v:'-').join(" / ") + '万户</span></div>';
+    const yoyVals = invYoY || [];
+    if (yoyVals.some(v => v != null)) {
+      invHtml += '<div class="macro-row"><span class="macro-label">同比</span><span class="macro-value">' + yoyVals.map(v=>v!=null?v+'%':'-').join(" / ") + '</span></div>';
+    }
+    if (invTotal[invTotal.length - 1] != null) {
+      invHtml += '<div class="macro-row"><span class="macro-label">期末总量</span><span class="macro-value">' + invTotal[invTotal.length - 1] + '万户</span></div>';
+    }
+    if (invAvgMC.length && invAvgMC[invAvgMC.length - 1] != null) {
+      invHtml += '<div class="macro-row"><span class="macro-label">户均市值</span><span class="macro-value">' + invAvgMC[invAvgMC.length - 1] + '万元</span></div>';
+    }
+  }
+  if (inv["数据来源"]) {
+    invHtml += '<div class="muted" style="font-size:9px;margin-top:3px;">' + inv["数据来源"] + '</div>';
+  }
+  if (inv["历史峰值万户"]) {
+    invHtml += '<div class="muted" style="font-size:10px;margin-top:4px;">' +
+      '参考：<strong>＞500万户=大牛市冲顶</strong> | ' +
+      '连续3月＞200万户=阶段小牛市顶部 | ' +
+      '历史峰值 ' + inv["峰值月份"] + '：<strong>' + inv["历史峰值万户"] + '万户</strong>' +
+      '</div>';
+  }
+  if (inv["信号"]) {
+    invHtml += '<div style="font-size:11px;margin-top:4px;color:#475569;font-weight:600;">' + inv["信号"] + '</div>';
+  }
+  document.getElementById("macro-investor").innerHTML = invHtml || "无数据";
+
+  // 总结
+  document.getElementById("macro-summary").textContent = data.summary || "数据加载中…";
+}
+
+function parseAmount(s) {
+  if (!s && s !== 0) return NaN;
+  s = String(s).replace(/,/g, "");
+  const n = parseFloat(s);
+  if (isNaN(n)) return NaN;
+  if (s.includes("万亿")) return n * 1e12;
+  if (s.includes("亿"))   return n * 1e8;
+  if (s.includes("万"))   return n * 1e4;
+  return n;
+}
+
+function formatAmountBrief(n) {
+  if (!Number.isFinite(n)) return "-";
+  const abs = Math.abs(n);
+  if (abs >= 1e12) return (n / 1e12).toFixed(2) + "万亿";
+  if (abs >= 1e8)  return (n / 1e8).toFixed(2) + "亿";
+  if (abs >= 1e4)  return (n / 1e4).toFixed(0) + "万";
+  return n.toFixed(0);
+}
+
+function buildFinancialSummary(fund, s2, peTtm) {
+  let html = '<div class="eval-section"><strong>财务走势一览</strong></div>';
+  html += '<table class="fin-table"><thead><tr><th>指标</th><th>最新</th><th>上期</th><th>变化</th><th>走势</th></tr></thead><tbody>';
+
+  const revG = (() => { try { return JSON.parse(s2?.rev_growth || "[]"); } catch { return []; } })();
+  const profitG = (() => { try { return JSON.parse(s2?.profit_growth || "[]"); } catch { return []; } })();
+  const margin = (() => { try { return JSON.parse(s2?.profit_margin || "[]"); } catch { return []; } })();
+
+  function trendArrow(cur, prev, goodIsUp) {
+    if (cur == null || prev == null || isNaN(cur) || isNaN(prev)) return ["→", ""];
+    const d = cur - prev;
+    const up = d > 0;
+    const dir = goodIsUp ? up : !up;
+    const cls = Math.abs(d) < 1e-9 ? "" : dir ? "pass" : "fail";
+    const sym = Math.abs(d) < 1e-9 ? "→" : up ? "↑" : "↓";
+    return [sym, cls];
+  }
+
+  function addRow(label, curStr, prevStr, goodIsUp, extraNote) {
+    const isStr = typeof curStr === "string" && curStr !== "-";
+    const cur = isStr ? parseFloat(curStr) : curStr;
+    const prev = (typeof prevStr === "string" && prevStr !== "-") ? parseFloat(prevStr) : prevStr;
+    if ((cur == null || isNaN(cur)) && (prev == null || isNaN(prev))) return;
+    const [arrow, cls] = trendArrow(cur, prev, goodIsUp);
+    const diff = (Number.isFinite(cur) && Number.isFinite(prev)) ? (cur - prev) : null;
+    const diffStr = diff != null ? `${diff >= 0 ? "+" : ""}${diff.toFixed(1)}` : "-";
+    const diffLabel = isStr ? "-" : (isNaN(diff) ? "-" : diffStr);
+    html += `<tr>
+      <td class="f-label">${label}</td>
+      <td>${isStr ? curStr : (typeof cur == "number" ? cur.toFixed(1) : curStr || "-")}</td>
+      <td>${(typeof prevStr === "string" && prevStr !== "-") ? prevStr : (typeof prev == "number" ? prev.toFixed(1) : prevStr || "-")}</td>
+      <td>${diffLabel}</td>
+      <td class="${cls}">${arrow}${extraNote || ""}</td>
+    </tr>`;
+  }
+
+  // ---------- 环比计算：从利润表累计值反推单季 ----------
+  // 中国财报：年内累计（Q1 独自、H1=Q1+Q2、9M=Q1+Q2+Q3、年报=全年）
+  // 必须按年份分组，Q1(0331) 是独立单季，同年后项减前项得单季
+  function computeQoqFromIncome(label, extraLabel) {
+    const income = fund?.income || [];
+    let row = income.find(r => r.label === label);
+    if (!row && extraLabel) row = income.find(r => r.label === extraLabel);
+    if (!row || !row.dates || !row.values || row.values.length < 2) return null;
+
+    const pairs = row.dates.map((d, i) => [String(d), parseAmount(row.values[i])])
+      .filter(p => Number.isFinite(p[1]));
+    if (pairs.length < 2) return null;
+    pairs.sort((a, b) => a[0].localeCompare(b[0]));
+
+    const byYear = {};
+    for (const [d, v] of pairs) {
+      const yr = d.slice(0, 4);
+      if (!byYear[yr]) byYear[yr] = [];
+      byYear[yr].push([d, v]);
+    }
+    const years = Object.keys(byYear).sort();
+
+    const singleQ = [];           // [amount, date]
+    for (const yr of years) {
+      const entries = byYear[yr];
+      entries.sort((a, b) => a[0].localeCompare(b[0]));
+      for (let i = 0; i < entries.length; i++) {
+        const [d, v] = entries[i];
+        if (d.endsWith("0331")) {
+          singleQ.push([v, d]);             // Q1 独立
+        } else if (i > 0) {
+          const [, pv] = entries[i - 1];
+          const diff = v - pv;
+          if (diff > 0 && Number.isFinite(diff)) singleQ.push([diff, d]);  // 年报-9M / H1-Q1
+        }
+        // 首个条目非 Q1（如只有 9M+年报）：跳过，无法拆单季
+      }
+    }
+
+    // 算环比：最新单季 vs 上一单季
+    const rates = [];
+    for (let i = 1; i < singleQ.length; i++) {
+      const prev = singleQ[i - 1][0];
+      // 分母过小（<100万元）跳过，避免极端比率
+      if (!Number.isFinite(prev) || Math.abs(prev) < 1e6) { rates.push(null); continue; }
+      const raw = roundPct((singleQ[i][0] - prev) / Math.abs(prev) * 100);
+      // 比率 > 500% 显示为基数过小，无参考意义
+      rates.push(raw !== null && Math.abs(raw) > 500 ? null : raw);
+    }
+    if (rates.length < 1) return null;
+    return rates.length >= 2 ? [rates[rates.length - 1], rates[rates.length - 2]] : [rates[rates.length - 1], null];
+  }
+
+  function roundPct(v) { return Number.isFinite(v) ? parseFloat(v.toFixed(1)) : null; }
+
+  const profitQoq = computeQoqFromIncome("净利润");
+  const revQoq = computeQoqFromIncome("营业总收入", "营业收入");
+
+  // 净利润增速 (同比)
+  if (profitG.length >= 2) addRow("净利润增速(同比)", profitG[profitG.length - 1], profitG[profitG.length - 2], true, " 同比");
+  // 净利润增速 (环比)
+  if (profitQoq && profitQoq[0] != null) {
+    addRow("净利润增速(环比)", profitQoq[0], profitQoq[1], true, " 环比");
+  }
+  // 营收增速 (同比)
+  if (revG.length >= 2)    addRow("营收增速(同比)",   revG[revG.length - 1],    revG[revG.length - 2],    true, " 同比");
+  // 营收增速 (环比)
+  if (revQoq && revQoq[0] != null) {
+    addRow("营收增速(环比)", revQoq[0], revQoq[1], true, " 环比");
+  }
+  // 销售净利率
+  if (margin.length >= 2)  addRow("销售净利率", margin[margin.length - 1], margin[margin.length - 2], true, "");
+
+  // 应收款（绝对值，取最近两期）
+  const bal = fund?.balance || [];
+  function getBal(label) {
+    const r = bal.find(r2 => r2.label === label);
+    if (!r || !r.values || r.values.length < 2) return null;
+    const cur = parseAmount(r.values[0]);
+    const prev = parseAmount(r.values[1]);
+    return isNaN(cur) || isNaN(prev) ? null : [cur, prev];
+  }
+  let ar = getBal("应收账款");
+  if (!ar) ar = getBal("应收票据及应收账款");
+  if (ar) {
+    const pct = ar[0] !== 0 ? ((ar[0] - ar[1]) / Math.abs(ar[1]) * 100) : 0;
+    addRow("应收款", formatAmountBrief(ar[0]), formatAmountBrief(ar[1]), false, ` ${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`);
+  }
+
+  const inv = getBal("存货");
+  if (inv) {
+    const pct = inv[0] !== 0 ? ((inv[0] - inv[1]) / Math.abs(inv[1]) * 100) : 0;
+    addRow("存货", formatAmountBrief(inv[0]), formatAmountBrief(inv[1]), false, ` ${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`);
+  }
+
+  // 动态市盈率
+  if (peTtm != null) {
+    html += `<tr><td class="f-label">动态PE(TTM)</td><td>${peTtm}</td><td>-</td><td>-</td><td>-</td></tr>`;
+  }
+
+  html += '</tbody></table>';
+  return html;
 }
 
 function buildFinancialTable(rows) {
@@ -1071,7 +1468,7 @@ async function evaluateSepaInput() {
       const localMatch = sepaRows.find((r) => normalizeCode(r.code) === code);
       if (localMatch) {
         const isStage2 = Number(localMatch.score) >= 8;
-        resultBox.innerHTML = `<div><strong>本地缓存结果</strong> (${localMatch.date || "未知日期"})</div><div>名称：${localMatch.name || code}</div><div>行业：${localMatch.industry || "-"}</div><div>第二阶段：<span class="${isStage2 ? "pass" : "fail"}">${isStage2 ? "是" : "否"}</span></div><div>分数：${localMatch.score}</div><div>收盘价：${localMatch.close}</div><div>MA50/MA150/MA200：${localMatch.ma50} / ${localMatch.ma150} / ${localMatch.ma200}</div>`;
+        resultBox.innerHTML = `<div><strong>本地缓存结果</strong> (${localMatch.date || "未知日期"})</div><div>名称：${localMatch.name || code}</div><div>行业：${localMatch.industry || "-"}</div><div>第二阶段：<span class="${isStage2 ? "pass" : "fail"}">${isStage2 ? "是" : "否"}</span></div><div>分数：${localMatch.score}</div><div>收盘价：${localMatch.close}</div><div>RS强度：${localMatch.rps_120 ?? "-"} | MA200：${localMatch.ma200}</div>`;
         return;
       }
       throw new Error("API 不可用且无本地缓存");
@@ -1101,7 +1498,7 @@ async function evaluateSepaInput() {
     html += `<div>判定：<span class="${isS1 ? "pass" : "fail"}">${isS1 ? "是" : "否"}</span> 评分：${s1?.score ?? "-"}</div>`;
     if (s1) {
       html += `<div class="muted">距高点：${s1.pct_below_52w_high}% | 量比：${s1.vol_contraction_ratio} | 波动：${s1.range_pct}%</div>`;
-      html += `<div class="muted">MA200变化：${s1.ma200_change_pct}% | MA50/150/200：${s1.ma50} / ${s1.ma150} / ${s1.ma200}</div>`;
+      html += `<div class="muted">MA200变化：${s1.ma200_change_pct}% | MA200：${s1.ma200} | RS：${s1.rps_120 ?? "-"}</div>`;
     }
     html += `</div>`;
 
@@ -1112,12 +1509,17 @@ async function evaluateSepaInput() {
     html += `<div class="eval-stage-title">第二阶段（上升）</div>`;
     html += `<div>判定：<span class="${isS2 ? "pass" : "fail"}">${isS2 ? "是" : "否"}</span> 评分：${s2?.score ?? "-"}</div>`;
     if (s2) {
-      html += `<div class="muted">MA50/150/200：${s2.ma50} / ${s2.ma150} / ${s2.ma200} | 收盘：${s2.close}</div>`;
+      html += `<div class="muted">RS强度：${s2.rps_120 ?? "-"} | MA200：${s2.ma200} | 收盘：${s2.close}</div>`;
+      html += `<div class="muted">杯柄：${cupHit(s2) ? '✅' : '-'} | VCP：${vcpHitStr(s2)} | ROE：${s2.roe != null ? s2.roe + "%" : "-"}</div>`;
       html += `<div class="muted">52周低点+${s2.pct_above_52w_low}% | 高点${s2.pct_below_52w_high}%</div>`;
     }
     html += `</div>`;
 
     html += `</div>`;
+
+    // 财务走势一览（在三大报表之前）
+    const peTtm = (s2 || r).pe_ttm;
+    html += buildFinancialSummary(fund, s2 || r, peTtm);
 
     // Financial tables
     if (fund.income && fund.income.length > 1) {
@@ -1195,10 +1597,23 @@ async function startScan(type) {
 }
 
 async function loadDashboard() {
-  await Promise.allSettled([loadStage1Candidates(), loadSepaCandidates(), loadVbCandidates(), loadMarketBreadth()]);
+  try {
+    document.getElementById("sepa-body").innerHTML = '<tr><td colspan="19" class="muted">加载中...</td></tr>';
+    await Promise.allSettled([loadStage1Candidates(), loadSepaCandidates(), loadVbCandidates(), loadMarketBreadth(), loadMacroData()]);
+  } catch(e) {
+    document.getElementById("sepa-body").innerHTML = '<tr><td colspan="19" style="color:red">初始化错误: ' + e.message + '</td></tr>';
+  }
 }
 
+window.addEventListener("error", function(e) {
+  var el = document.getElementById("sepa-body");
+  if (el && el.textContent.indexOf("Loading") >= 0) {
+    el.innerHTML = '<tr><td colspan="19" style="color:red">JS错误: ' + e.message + ' (行' + e.lineno + ')</td></tr>';
+  }
+});
+
 loadDashboard().catch((error) => {
+  document.getElementById("sepa-body").innerHTML = '<tr><td colspan="19" style="color:red">启动失败: ' + error.message + '</td></tr>';
   console.error("Dashboard load failed:", error);
 });
 
@@ -1228,7 +1643,7 @@ document.getElementById("filter-code-s1").addEventListener("input", () => {
   tableState.stage1.page = 1;
   renderStage1Rows();
 });
-["filter-industry","filter-board","filter-cup","filter-vcp","filter-fin","filter-label"].forEach(id => {
+["filter-industry","filter-board","filter-cup-s1","filter-vcp-s1","filter-fin","filter-label"].forEach(id => {
   document.getElementById(id).addEventListener("change", () => {
     tableState.stage1.page = 1;
     renderStage1Rows();
@@ -1236,7 +1651,7 @@ document.getElementById("filter-code-s1").addEventListener("input", () => {
 });
 document.getElementById("filter-reset").addEventListener("click", () => {
   document.getElementById("filter-code-s1").value = "";
-  ["filter-industry","filter-board","filter-cup","filter-vcp","filter-fin","filter-label"].forEach(id => {
+  ["filter-industry","filter-board","filter-cup-s1","filter-vcp-s1","filter-fin","filter-label"].forEach(id => {
     document.getElementById(id).value = "";
   });
   tableState.stage1.page = 1;
@@ -1355,10 +1770,10 @@ function renderTechnicalResult(r, div) {
   h += `<div class="eval-section"><strong>技术形态</strong>（共 ${r.patterns["合计有效形态"]} 种）</div>`;
   const pf = r.patterns;
   if (pf["看涨形态"] && pf["看涨形态"].length) {
-    h += `<div>▶ 看涨：${pf["看涨形态"].map(p=>`<span class="concept-tag" style="background:#2d3a2d;">${p.形态}(强${p.强度})</span>`).join(" ")}</div>`;
+    h += `<div>▶ 看涨：${pf["看涨形态"].map(p=>`<span class="concept-tag" style="background:#dcfce7;color:#166534;font-weight:600;">${p.形态}(强${p.强度})</span>`).join(" ")}</div>`;
   }
   if (pf["看跌形态"] && pf["看跌形态"].length) {
-    h += `<div>▶ 看跌：${pf["看跌形态"].map(p=>`<span class="concept-tag" style="background:#3a2d2d;">${p.形态}(强${p.强度})</span>`).join(" ")}</div>`;
+    h += `<div>▶ 看跌：${pf["看跌形态"].map(p=>`<span class="concept-tag" style="background:#fee2e2;color:#991b1b;font-weight:600;">${p.形态}(强${p.强度})</span>`).join(" ")}</div>`;
   }
   if (pf["整理形态"] && pf["整理形态"].length) {
     h += `<div>▶ 整理：${pf["整理形态"].map(p=>`<span class="concept-tag">${p.形态}(强${p.强度})</span>`).join(" ")}</div>`;
@@ -1405,7 +1820,7 @@ function startScanPolling() {
     scanPollingTimer = setInterval(() => {
       loadScanProgress().then(data => {
         // 扫描完成后停止轮询
-        if (data && data.status === 'completed') {
+        if (data && data.status === 'done') {
           stopScanPolling();
         }
       }).catch(() => {});
@@ -1436,6 +1851,7 @@ setTimeout(() => {
 
 setInterval(() => {
   loadMarketBreadth().catch(() => {});
+  loadMacroData().catch(() => {});
 }, 60000);
 
 function downloadExcel(type) {

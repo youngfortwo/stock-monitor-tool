@@ -335,294 +335,122 @@ def load_industry_overrides(path: str = "industry_overrides.csv") -> dict[str, s
     return dict(zip(overrides["code"], overrides["industry"]))
 
 def detect_cup_handle(data: pd.DataFrame) -> tuple[bool, dict]:
-    """
-    【重构版】欧奈尔+SEPA标准 杯柄形态检测
-    修复核心问题：
-    1. 动态识别U型杯身（左沿→杯底→右沿），不再固定切片
-    2. 动态定位柄部（从右杯沿后开始），不再强制最后20天
-    3. 新增价格突破判定，有量有价才确认形态完成
-    4. 新增U型合理性校验，过滤V型尖底
-    标准：
-    1. 前置：上升趋势（MA200上行 + 股价站上MA200）
-    2. U型杯身：左沿→杯底→右沿，深度20-35%，周期约3-5个月
-    3. 柄部：右沿后1-4周窄幅回调，深度8-15%，位于杯身上半部
-    4. 确认：放量突破柄部上沿（量≥1.5倍20日均量 + 价破柄高）
-    """
+    """简化版杯柄检测：近120日寻找U型回调+回升+缩量形态。"""
     if len(data) < 120:
-        return False, {"error": "数据长度不足（需≥120日）"}
-
-    # 复用外部已计算均线，避免重复滚动
-    df = data.copy()
-    if "ma200" not in df.columns:
-        df["ma200"] = df["close"].rolling(200).mean()
-    recent = df.tail(120).reset_index(drop=True)  # 重置索引，方便定位位置
-    close_arr = recent["close"].values
-    volume_arr = recent["volume"].values
-
-    # ======================
-    # 1. 上升趋势前置校验
-    # ======================
-    uptrend = (
-        (close_arr[-1] > recent["ma200"].iloc[-1])
-        and (recent["ma200"].iloc[-1] > recent["ma200"].iloc[-30])
-    )
-    if not uptrend:
-        return False, {"reason": "非上升趋势，无标准杯柄"}
-
-    # ======================
-    # 2. 动态识别U型杯身（核心重构）
-    # 逻辑：先找杯底 → 左边找左杯沿高点 → 右边找右杯沿高点
-    # ======================
-    # 预留最后5天作为柄部/突破空间，右杯沿不能太靠后
-    search_end = len(recent) - 5
-    if search_end < 40:
-        return False, {"reason": "有效区间不足，无法构建杯身"}
-
-    # 2.1 找杯底（区间内最低点）
-    cup_bottom_idx = int(np.argmin(close_arr[:search_end]))
-    cup_bottom_price = float(close_arr[cup_bottom_idx])
-    # 杯底不能太靠左/太靠右，保证左右都有空间
-    if cup_bottom_idx < 10 or cup_bottom_idx > search_end - 15:
-        return False, {"reason": "杯底位置异常，非有效U型"}
-
-    # 2.2 找左杯沿（杯底左边的最高点）
-    left_rim_idx = int(np.argmax(close_arr[:cup_bottom_idx]))
-    left_rim_price = float(close_arr[left_rim_idx])
-    # 左杯沿不能太靠近杯底
-    if cup_bottom_idx - left_rim_idx < 10:
-        return False, {"reason": "左杯沿到杯底距离过短，非有效U型"}
-
-    # 2.3 找右杯沿（杯底到搜索终点之间的最高点）
-    right_rim_idx = cup_bottom_idx + int(np.argmax(close_arr[cup_bottom_idx:search_end]))
-    right_rim_price = float(close_arr[right_rim_idx])
-    # 右杯沿不能太靠近杯底
-    if right_rim_idx - cup_bottom_idx < 10:
-        return False, {"reason": "杯底到右杯沿距离过短，非有效U型"}
-
-    # 2.4 杯身核心指标校验
-    cup_depth = (1 - cup_bottom_price / left_rim_price) * 100 if left_rim_price > 0 else 0
-    valid_cup_depth = 20 <= cup_depth <= 35  # 深度符合标准
-    near_rim = right_rim_price >= left_rim_price * 0.9  # 右沿接近左沿高度
-
-    # 2.5 U型合理性校验（过滤V型尖底）
-    down_days = cup_bottom_idx - left_rim_idx  # 下跌天数
-    up_days = right_rim_idx - cup_bottom_idx  # 回升天数
-    u_shape_reasonable = 0.3 <= down_days / up_days <= 3  # 下跌/回升时长比例合理
-
-    # 杯身整体是否合格
-    valid_cup = valid_cup_depth and near_rim and u_shape_reasonable
-
-    # ======================
-    # 3. 动态定位柄部（从右杯沿之后开始）
-    # ======================
-    handle_start_idx = right_rim_idx + 1
-    handle_end_idx = len(recent) - 1
-    handle_days = handle_end_idx - handle_start_idx + 1
-
-    # 柄部周期校验：1-4周（5-20个交易日）
-    if not (5 <= handle_days <= 20):
-        return False, {"reason": f"柄部周期异常({handle_days}天)，标准1-4周"}
-
-    handle_prices = close_arr[handle_start_idx:handle_end_idx+1]
-    handle_high = float(np.max(handle_prices))
-    handle_low = float(np.min(handle_prices))
-    handle_depth = (1 - handle_low / handle_high) * 100 if handle_high > 0 else 0
-
-    cup_mid_price = (left_rim_price + cup_bottom_price) / 2  # 杯身中线
-    valid_handle = (
-        8 <= handle_depth <= 15          # 柄部深度符合标准
-        and handle_low > cup_mid_price   # 柄部位于杯身上半部
-        and handle_high < left_rim_price # 柄部高点不超过杯口
-        and handle_high <= right_rim_price * 1.02  # 柄部高点不明显超右沿
-    )
-
-    # ======================
-    # 4. 量能 + 价格突破校验
-    # ======================
-    # 4.1 柄部缩量：柄部均量 < 杯身均量 * 0.75
-    cup_vol = float(np.mean(volume_arr[left_rim_idx:right_rim_idx+1]))
-    handle_vol = float(np.mean(volume_arr[handle_start_idx:handle_end_idx+1]))
-    volume_contract = handle_vol < cup_vol * 0.75
-
-    # 4.2 20日均量（支持外部复用）
-    if "vol_avg" in df.columns:
-        vol_avg_20 = float(df["vol_avg"].iloc[-1])
-    else:
-        vol_avg_20 = float(df["volume"].rolling(20).mean().iloc[-1])
-
-    # 4.3 突破确认：价破柄高 + 量超1.5倍
-    current_close = float(close_arr[-1])
-    current_vol = float(volume_arr[-1])
-    price_breakout = current_close > handle_high
-    volume_breakout = current_vol > vol_avg_20 * 1.5
-    breakout_valid = price_breakout and volume_breakout
-
-    # ======================
-    # 5. 最终形态判定
-    # ======================
-    pattern = valid_cup and valid_handle and volume_contract and breakout_valid
-
-    return pattern, {
-        "cup_valid": valid_cup,
-        "cup_high": round(left_rim_price, 2),       # 左杯沿价格（杯口）
-        "cup_low": round(cup_bottom_price, 2),      # 杯底价格
-        "cup_depth_pct": round(cup_depth, 2),       # 杯身深度
-        "cup_days": right_rim_idx - left_rim_idx,   # 杯身构建天数
-        "right_rim_price": round(right_rim_price, 2), # 右杯沿价格
-        "handle_valid": valid_handle,
-        "handle_high": round(handle_high, 2),
-        "handle_low": round(handle_low, 2),
-        "handle_depth_pct": round(handle_depth, 2),
-        "handle_days": handle_days,
-        "volume_contracting": volume_contract,
-        "price_breakout": price_breakout,
-        "volume_breakout": volume_breakout,
-        "near_rim": near_rim,
-    }
-
-
-def detect_vcp(data: pd.DataFrame) -> tuple[bool, dict]:
-    """马克·米勒维尼 VCP 波动收缩形态检测（优化版）。
-
-    核心标准：
-    1. 前置：上升趋势（MA200上行 + 股价站上MA200 + MA50>MA200）
-    2. 2-4轮收缩：每轮振幅逐级收窄（波段峰谷识别），首轮≥12%
-    3. 量能同步萎缩：每轮成交量逐级递减
-    4. 基底重心平稳：后段高点不低于前段92%
-    5. 末端极致缩量+窄幅震荡（作弊区）
-    6. 区分「构筑中」和「已突破」两种状态
-    """
-    if len(data) < 120:
-        return False, {"error": "数据长度不足（需≥120日）"}
-
-    needs_copy = "ma200" not in data.columns or "ma50" not in data.columns
-    df = data.copy() if needs_copy else data
-    if "ma200" not in df.columns:
-        df["ma200"] = df["close"].rolling(200).mean()
-    if "ma50" not in df.columns:
-        df["ma50"] = df["close"].rolling(50).mean()
-
-    uptrend = (
-        (df["close"].iloc[-1] > df["ma200"].iloc[-1])
-        and (df["ma200"].iloc[-1] > df["ma200"].iloc[-30])
-        and (df["ma50"].iloc[-1] > df["ma200"].iloc[-1])
-    )
-    if not uptrend:
-        return False, {"reason": "不满足SEPA上升趋势前提"}
-
-    recent = df.tail(120).reset_index(drop=True)
-    close = recent["close"].values
-    volume = recent["volume"].values
+        return False, {"error": "数据不足"}
+    close = data["close"].values
+    high = data["high"].values
+    low = data["low"].values
+    volume = data["volume"].values
     n = len(close)
-
-    window = 10
-    high_idx = argrelextrema(close, np.greater_equal, order=window)[0]
-    low_idx = argrelextrema(close, np.less_equal, order=window)[0]
-
-    pivots = []
-    for idx in high_idx:
-        pivots.append((idx, "high", float(close[idx])))
-    for idx in low_idx:
-        pivots.append((idx, "low", float(close[idx])))
-    pivots.sort(key=lambda x: x[0])
-
-    clean_pivots = []
-    for p in pivots:
-        if not clean_pivots:
-            clean_pivots.append(p)
-            continue
-        last_type = clean_pivots[-1][1]
-        if p[1] == last_type:
-            if (last_type == "high" and p[2] > clean_pivots[-1][2]) or \
-               (last_type == "low" and p[2] < clean_pivots[-1][2]):
-                clean_pivots[-1] = p
-        else:
-            clean_pivots.append(p)
-
-    corrections = []
-    swing_highs = []
-    for i in range(len(clean_pivots) - 1):
-        idx1, t1, v1 = clean_pivots[i]
-        idx2, t2, v2 = clean_pivots[i + 1]
-        if t1 == "high" and t2 == "low" and v1 > v2:
-            depth_pct = (1 - v2 / v1) * 100
-            vol_avg = float(np.mean(volume[idx1:idx2+1]))
-            corrections.append({
-                "start_idx": idx1,
-                "end_idx": idx2,
-                "depth_pct": depth_pct,
-                "vol_avg": vol_avg,
-                "high_price": v1,
-                "low_price": v2
-            })
-            swing_highs.append(v1)
-
-    if len(corrections) < 2:
-        return False, {"reason": "收缩次数不足（需≥2轮）"}
-    if corrections[0]["depth_pct"] < 12:
-        return False, {"reason": "首轮回调幅度过小，无洗盘意义"}
-
-    depths = [c["depth_pct"] for c in corrections]
-    vols = [c["vol_avg"] for c in corrections]
-
-    tighten_count = sum(1 for i in range(1, len(depths)) if depths[i] <= depths[i-1] * 0.88)
-    vcp_tighten = tighten_count >= len(depths) - 1
-
-    vol_shrink_count = sum(1 for i in range(1, len(vols)) if vols[i] <= vols[i-1] * 0.88)
-    vcp_vol_shrink = vol_shrink_count >= len(vols) - 1
-
-    high_trend_ok = all(swing_highs[i] >= swing_highs[i-1] * 0.92 for i in range(1, len(swing_highs)))
-
-    last_correction = corrections[-1]
-    last_correction_range = last_correction["depth_pct"]
-    very_tight = last_correction_range < 12
-
-    last_correction_vol = last_correction["vol_avg"]
-    base_vol = np.mean(volume[:corrections[0]["end_idx"]])
-    vol_dry = last_correction_vol < base_vol * 0.7
-
-    last_swing_high = swing_highs[-1]
+    lookback = min(120, n)
+    recent_close = close[-lookback:]
+    recent_high = high[-lookback:]
+    recent_low = low[-lookback:]
+    recent_vol = volume[-lookback:]
+    peak_idx = int(np.argmax(recent_high[:int(lookback * 0.75)]))
+    peak_price = float(recent_high[peak_idx])
+    search_start = peak_idx + 5
+    if search_start >= len(recent_close) - 20:
+        return False, {"reason": "无足够空间形成杯底"}
+    bottom_idx = search_start + int(np.argmin(recent_low[search_start:-10]))
+    bottom_price = float(recent_low[bottom_idx])
+    cup_depth = (1 - bottom_price / peak_price) * 100
+    if not (8 <= cup_depth <= 40):
+        return False, {"reason": f"杯深{cup_depth:.0f}%不在8-40%"}
+    rim_search = recent_high[bottom_idx + 10:]
+    if len(rim_search) < 5:
+        return False, {"reason": "无右杯沿"}
+    rim_idx = bottom_idx + 10 + int(np.argmax(rim_search))
+    rim_price = float(recent_high[rim_idx])
+    if rim_price < peak_price * 0.7:
+        return False, {"reason": "右杯沿回升不足"}
+    handle_search = recent_high[rim_idx + 3:]
+    if len(handle_search) < 3:
+        return False, {"reason": "无柄部空间"}
+    handle_low_idx = rim_idx + 3 + int(np.argmin(recent_low[rim_idx + 3:min(rim_idx + 30, len(recent_low))]))
+    handle_low = float(recent_low[handle_low_idx])
+    handle_depth = (1 - handle_low / rim_price) * 100 if rim_price > 0 else 0
+    pre_peak_vol = np.mean(recent_vol[max(0, peak_idx-20):peak_idx+1])
+    cup_vol = np.mean(recent_vol[peak_idx:rim_idx+1])
+    vol_contract = cup_vol < pre_peak_vol * 1.2 and cup_vol > 0
     current_close = float(close[-1])
     current_vol = float(volume[-1])
-    vol_avg_20 = float(np.mean(volume[-20:]))
-    price_breakout = current_close > last_swing_high
-    volume_breakout = current_vol > vol_avg_20 * 1.5
-    breakout_valid = price_breakout and volume_breakout
-
-    base_vcp = vcp_tighten and vcp_vol_shrink and high_trend_ok and very_tight and vol_dry
-    pattern = base_vcp or breakout_valid
-
+    vol_ma20 = np.mean(volume[-20:])
+    price_near_rim = current_close > rim_price * 0.9
+    pattern = (
+        cup_depth >= 10 and cup_depth <= 40 and
+        rim_price >= peak_price * 0.75 and
+        handle_depth >= 2 and handle_depth <= 20 and
+        handle_low >= bottom_price * 1.02 and
+        vol_contract and price_near_rim
+    )
+    return pattern, {
+        "cup_valid": cup_depth >= 8 and cup_depth <= 40 and rim_price >= peak_price * 0.7,
+        "cup_high": round(peak_price, 2),
+        "cup_low": round(bottom_price, 2),
+        "cup_depth_pct": round(cup_depth, 2),
+        "cup_days": rim_idx - peak_idx,
+        "right_rim_price": round(rim_price, 2),
+        "handle_valid": handle_depth >= 2 and handle_depth <= 20,
+        "handle_high": round(rim_price, 2),
+        "handle_low": round(handle_low, 2),
+        "handle_depth_pct": round(handle_depth, 2),
+        "handle_days": handle_low_idx - rim_idx - 3,
+        "volume_contracting": vol_contract,
+        "price_breakout": current_close > rim_price,
+        "volume_breakout": current_vol > vol_ma20 * 1.2,
+        "near_rim": price_near_rim,
+    }
+def detect_vcp(data: pd.DataFrame) -> tuple[bool, dict]:
+    """简化版VCP：近120日波动率收窄+量萎缩。"""
+    if len(data) < 120:
+        return False, {"error": "数据不足"}
+    recent = data.tail(120)
+    close = recent["close"].values
+    high = recent["high"].values
+    low = recent["low"].values
+    volume = recent["volume"].values
+    if "ma200" not in data.columns:
+        data["ma200"] = data["close"].rolling(200).mean()
+    ma200_now = float(data["ma200"].iloc[-1])
+    def amp(arr):
+        return (np.max(arr) / np.min(arr) - 1) * 100 if np.min(arr) > 0 else 100
+    a1, a2, a3 = amp(close[-20:]), amp(close[-40:-20]), amp(close[-60:-40])
+    tight = a1 < max(a2, a3) * 0.9 if max(a2, a3) > 0 and a1 < 25 else False
+    v20 = np.mean(volume[-20:])
+    v60 = np.mean(volume[-80:-20])
+    vol_dry = v20 < v60 * 0.95
+    current_close = float(close[-1])
+    current_vol = float(volume[-1])
+    high_20 = float(np.max(high[-20:]))
+    price_break = current_close > high_20 * 0.95
+    vol_break = current_vol > np.mean(volume[-20:]) * 1.2
+    up = current_close > ma200_now and float(data["ma200"].iloc[-1]) > float(data["ma200"].iloc[-31])
+    pattern = up and (tight or vol_dry) and price_break
     return pattern, {
         "vcp_valid": pattern,
-        "vcp_status": "已突破" if breakout_valid else "构筑中",
-        "vcp_contractions": len(corrections),
-        "vcp_tighten": vcp_tighten,
-        "vcp_vol_shrink": vcp_vol_shrink,
-        "high_trend_ok": high_trend_ok,
-        "vcp_tight_range": round(last_correction_range, 2),
+        "vcp_status": "已突破" if (price_break and vol_break) else "构筑中",
+        "vcp_contractions": sum(1 for v in [a1, a2, a3] if v > 3),
+        "vcp_tighten": tight,
+        "vcp_vol_shrink": vol_dry,
+        "high_trend_ok": up,
+        "vcp_tight_range": round(a1, 2),
         "vcp_vol_dry_up": vol_dry,
-        "vcp_breakout": breakout_valid,
-        "vcp_ranges": [round(d, 2) for d in depths],
-        "vcp_vols": [round(v, 2) for v in vols],
-        "vcp_resistance": round(last_swing_high, 2),
+        "vcp_breakout": price_break and vol_break,
+        "vcp_ranges": [round(a1, 2), round(a2, 2), round(a3, 2)],
+        "vcp_vols": [round(v20, 0), round(v60, 0)],
+        "vcp_resistance": round(high_20, 2),
     }
 
 
-def calc_stage2_core_conditions(data: pd.DataFrame) -> tuple[int, dict]:
-    """统一计算 SEPA Stage2 9项核心条件的满足数量与明细。
-
-    返回：(满足个数, 条件明细字典)
-    """
+def calc_stage2_core_conditions(data: pd.DataFrame, rps_120: float | None = None) -> tuple[int, dict]:
+    """计算 SEPA Stage2 5项核心条件（去掉MA50/MA150，增加RS强度）。"""
     if len(data) < 220:
         return 0, {}
 
-    # 复用调用方已计算好的 MA，避免重复 copy + rolling
-    needs_copy = "ma50" not in data.columns or "ma150" not in data.columns or "ma200" not in data.columns
+    needs_copy = "ma200" not in data.columns
     df = data.copy() if needs_copy else data
-    if "ma50" not in df.columns:
-        df["ma50"] = df["close"].rolling(50).mean()
-    if "ma150" not in df.columns:
-        df["ma150"] = df["close"].rolling(150).mean()
     if "ma200" not in df.columns:
         df["ma200"] = df["close"].rolling(200).mean()
 
@@ -632,25 +460,28 @@ def calc_stage2_core_conditions(data: pd.DataFrame) -> tuple[int, dict]:
     low_52w = df.tail(252)["low"].min()
 
     close = float(latest["close"])
-    ma50 = float(latest["ma50"])
-    ma150 = float(latest["ma150"])
     ma200 = float(latest["ma200"])
     pct_above_low = (close / float(low_52w) - 1) * 100
     pct_below_high = (close / float(high_52w) - 1) * 100
 
     conditions = {
-        "close_gt_ma50": bool(close > ma50),
-        "close_gt_ma150": bool(close > ma150),
         "close_gt_ma200": bool(close > ma200),
-        "ma50_gt_ma150": bool(ma50 > ma150),
-        "ma50_gt_ma200": bool(ma50 > ma200),
-        "ma150_gt_ma200": bool(ma150 > ma200),
         "ma200_rising_1m": bool(ma200 > float(ma200_20d_ago)),
         "above_52w_low_30pct": bool(pct_above_low >= 30),
         "within_25pct_52w_high": bool(pct_below_high >= -25),
+        "rps_120_strong": bool(rps_120 is not None and rps_120 >= 80),
     }
     count = sum(1 for v in conditions.values() if v)
     return count, conditions
+
+
+def calc_all_rps(stock_returns: dict[str, float]) -> dict[str, float]:
+    """批量计算全市场个股RPS（相对强弱百分位）。"""
+    codes = list(stock_returns.keys())
+    returns = np.array([stock_returns[c] for c in codes])
+    ranks = np.argsort(np.argsort(returns))
+    rps = (ranks / (len(returns) - 1)) * 100
+    return {code: round(float(rps[i]), 2) for i, code in enumerate(codes)}
 
 
 def detect_transition(
@@ -663,23 +494,14 @@ def detect_transition(
     has_cup_override: bool | None = None,
     financial_ready_override: bool | None = None,
 ) -> tuple[bool, dict]:
-    """识别 Stage1 → Stage2 过渡态（临门一脚状态）。
-
-    两级判定：
-    1. 基础过渡态：7~8个Stage2核心条件 + 至少1个技术面过渡信号
-    2. 高质量过渡态：基础过渡态 + 业绩加速 + 120日RPS进入全市场前30%
-
-    core_count_override / has_vcp_override / has_cup_override 用于调用方（evaluate_stage1）
-    传入已计算好的值，避免重复计算。
-    """
+    """识别 Stage1 → Stage2 过渡态。"""
     if len(data) < 220:
         return False, {"error": "数据不足"}
 
-    core_count = core_count_override if core_count_override is not None else calc_stage2_core_conditions(data)[0]
-    if not (7 <= core_count <= 8):
+    core_count = core_count_override if core_count_override is not None else calc_stage2_core_conditions(data, rps_120)[0]
+    if not (3 <= core_count <= 4):
         return False, {"stage2_core_count": core_count}
 
-    # 复用调用方已计算好的 MA，避免重复 copy + rolling
     if "ma200" not in data.columns:
         df = data.copy()
         df["ma200"] = df["close"].rolling(200).mean()
@@ -688,66 +510,41 @@ def detect_transition(
     ma200 = float(df.iloc[-1]["ma200"])
     ma200_20d_ago = float(df.iloc[-21]["ma200"])
     ma200_change_pct = (ma200 / ma200_20d_ago - 1) * 100 if ma200_20d_ago > 0 else 0
-
     ma_turning_up = 0 < ma200_change_pct <= 5
 
     recent_20d_vol = df.tail(20)["volume"].mean()
     prior_100d_vol = df.iloc[-120:-20]["volume"].mean()
     recent_5d_vol = df.tail(5)["volume"].mean()
-    vol_turning_up = (
-        recent_20d_vol < prior_100d_vol * 0.85
-        and recent_5d_vol > recent_20d_vol * 1.2
-    )
+    vol_turning_up = recent_20d_vol < prior_100d_vol * 0.85 and recent_5d_vol > recent_20d_vol * 1.2
 
     has_vcp = has_vcp_override if has_vcp_override is not None else detect_vcp(data)[0]
     has_cup = has_cup_override if has_cup_override is not None else detect_cup_handle(data)[0]
     pattern_ready = has_vcp or has_cup
 
-    # 优化2：使用传入的财务加速结果，避免重复计算
     if financial_ready_override is not None:
         financial_ready = financial_ready_override
     else:
-        financial_ready = False
-        if financial_cache is not None:
-            try:
-                fin_result = check_financial_acceleration(code, financial_cache)
-                financial_ready = fin_result["financial_pass"]
-            except Exception:
-                financial_ready = False
+        try:
+            fin = check_financial_acceleration(code, financial_cache)
+            financial_ready = fin["financial_pass"]
+        except Exception:
+            financial_ready = False
 
-    rps_ready = False
-    if rps_120 is not None:
-        rps_ready = rps_120 >= 70
-
-    tech_signal_count = sum([ma_turning_up, vol_turning_up, pattern_ready])
-    base_transition = tech_signal_count >= 1
+    rps_ready = rps_120 is not None and rps_120 >= 70
+    base_transition = ma_turning_up or vol_turning_up or pattern_ready
     high_quality_transition = base_transition and financial_ready and rps_ready
-    is_transition = base_transition
 
-    return is_transition, {
+    return high_quality_transition or base_transition, {
+        "is_transition": high_quality_transition or base_transition,
+        "is_high_quality": high_quality_transition,
         "stage2_core_count": core_count,
-        "is_base_transition": base_transition,
-        "is_high_quality_transition": high_quality_transition,
-        "ma200_turning_up": ma_turning_up,
-        "volume_turning_up": vol_turning_up,
+        "ma_turning_up": ma_turning_up,
+        "vol_turning_up": vol_turning_up,
         "pattern_ready": pattern_ready,
         "financial_ready": financial_ready,
         "rps_120_ready": rps_ready,
-        "tech_signal_count": tech_signal_count,
+        "ma200_change_pct": round(ma200_change_pct, 2),
     }
-
-
-def calc_all_rps(stock_returns: dict[str, float]) -> dict[str, float]:
-    """批量计算全市场个股RPS（相对强弱百分位）。
-
-    输入：{code: 120日涨跌幅(%)}
-    输出：{code: RPS百分位 0~100}
-    """
-    codes = list(stock_returns.keys())
-    returns = np.array([stock_returns[c] for c in codes])
-    ranks = np.argsort(np.argsort(returns))
-    rps = (ranks / (len(returns) - 1)) * 100
-    return {code: round(float(rps[i]), 2) for i, code in enumerate(codes)}
 
 
 def detect_pullback(data: pd.DataFrame) -> tuple[bool, dict]:
@@ -795,9 +592,28 @@ def detect_pullback(data: pd.DataFrame) -> tuple[bool, dict]:
     }
 
 
+def _to_json_safe(obj):
+    """递归转换 numpy 类型为原生 Python 类型，确保 json.dumps 可用。"""
+    import numpy as np
+    if isinstance(obj, dict):
+        return {str(k): _to_json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_to_json_safe(v) for v in obj]
+    if isinstance(obj, (np.bool_,)):
+        return bool(obj)
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    if isinstance(obj, (np.floating,)):
+        return float(obj)
+    if isinstance(obj, (np.ndarray,)):
+        return _to_json_safe(obj.tolist())
+    return obj
+
+
 def evaluate_stage2(code: str, name: str, industry: str, history: pd.DataFrame,
                     financial_cache: dict | None = None,
-                    market_caps: dict[str, float] | None = None) -> dict:
+                    market_caps: dict[str, float] | None = None,
+                    rps_120: float | None = None) -> dict:
     if history.empty or len(history) < 220:
         return {
             "code": code,
@@ -810,8 +626,6 @@ def evaluate_stage2(code: str, name: str, industry: str, history: pd.DataFrame,
         }
 
     data = history.copy()
-    data["ma50"] = data["close"].rolling(50).mean()
-    data["ma150"] = data["close"].rolling(150).mean()
     data["ma200"] = data["close"].rolling(200).mean()
 
     latest = data.iloc[-1]
@@ -819,8 +633,6 @@ def evaluate_stage2(code: str, name: str, industry: str, history: pd.DataFrame,
     low_52w = data.tail(252)["low"].min()
 
     close = float(latest["close"])
-    ma50 = float(latest["ma50"])
-    ma150 = float(latest["ma150"])
     ma200 = float(latest["ma200"])
     pct_above_low = (close / float(low_52w) - 1) * 100
     pct_below_high = (close / float(high_52w) - 1) * 100
@@ -831,7 +643,7 @@ def evaluate_stage2(code: str, name: str, industry: str, history: pd.DataFrame,
     vcp_pattern, vcp_details = detect_vcp(data)
     pullback, pullback_details = detect_pullback(data)
 
-    core_count, core_conditions = calc_stage2_core_conditions(data)
+    core_count, core_conditions = calc_stage2_core_conditions(data, rps_120)
     conditions = {
         **core_conditions,
         "cup_handle_pattern": cup_handle_pattern,
@@ -840,11 +652,11 @@ def evaluate_stage2(code: str, name: str, industry: str, history: pd.DataFrame,
     }
 
     score = 0
-    score += 20 if conditions["close_gt_ma50"] else 0
-    score += 20 if conditions["ma50_gt_ma150"] and conditions["ma150_gt_ma200"] else 0
-    score += 20 if conditions["ma200_rising_1m"] else 0
-    score += min(20, pct_above_low / 3)
-    score += max(0, 20 + pct_below_high)
+    score += 25 if conditions["close_gt_ma200"] else 0
+    score += 30 if conditions["rps_120_strong"] else 0
+    score += 25 if conditions["ma200_rising_1m"] else 0
+    score += max(0, 10 + pct_below_high)
+    score += min(10, pct_above_low / 5)
     score += 10 if cup_handle_pattern else 0
     score += 10 if vcp_pattern else 0
     score += 10 if pullback else 0
@@ -866,14 +678,35 @@ def evaluate_stage2(code: str, name: str, industry: str, history: pd.DataFrame,
         except Exception:
             pass
 
-    is_stage2 = core_count == 9
+    is_stage2 = core_count == 5
 
-    # 优化9：根据实际满足的条件动态生成 reasons，而非固定文案
+    # 杯柄/VCP合并评分: 0=无, 1=满足一项, 2=两项都满足
+    cup_vcp_score = (1 if cup_handle_pattern else 0) + (1 if vcp_pattern else 0)
+
+    # 提取 ROE（净资产收益率）
+    roe = None
+    try:
+        fin_abs = ak.stock_financial_abstract(symbol=code)
+        if not fin_abs.empty:
+            roe_row = fin_abs[fin_abs["指标"] == "净资产收益率_平均" if "净资产收益率_平均" in fin_abs["指标"].values else "净资产收益率(ROE)"]
+            # Try 净资产收益率_平均 first, fallback to 净资产收益率(ROE)
+            if roe_row.empty:
+                roe_row = fin_abs[fin_abs["指标"] == "净资产收益率(ROE)"]
+            if not roe_row.empty:
+                date_cols = [c for c in fin_abs.columns if str(c).isdigit() and len(str(c)) == 8]
+                if date_cols:
+                    latest_col = sorted(date_cols)[-1]
+                    val = roe_row.iloc[0][latest_col]
+                    if pd.notna(val):
+                        roe = round(float(val), 2)
+    except Exception:
+        pass
+
     reasons = []
-    if conditions["close_gt_ma50"] and conditions["close_gt_ma150"] and conditions["close_gt_ma200"]:
-        reasons.append("price above MA50/150/200")
-    if conditions["ma50_gt_ma150"] and conditions["ma150_gt_ma200"]:
-        reasons.append("MA50>MA150>MA200")
+    if conditions["close_gt_ma200"]:
+        reasons.append("price above MA200")
+    if conditions["rps_120_strong"]:
+        reasons.append(f"RS强度{rps_120:.0f}(前20%)")
     if conditions["ma200_rising_1m"]:
         reasons.append("MA200 rising")
     if conditions["above_52w_low_30pct"] and conditions["within_25pct_52w_high"]:
@@ -895,8 +728,6 @@ def evaluate_stage2(code: str, name: str, industry: str, history: pd.DataFrame,
         "is_stage2": is_stage2,
         "date": str(latest["date"]),
         "close": round(close, 2),
-        "ma50": round(ma50, 2),
-        "ma150": round(ma150, 2),
         "ma200": round(ma200, 2),
         "52w_high": round(float(high_52w), 2),
         "52w_low": round(float(low_52w), 2),
@@ -904,13 +735,16 @@ def evaluate_stage2(code: str, name: str, industry: str, history: pd.DataFrame,
         "pct_below_52w_high": round(float(pct_below_high), 2),
         "return_20d_pct": round(float(return_20d), 2),
         "return_120d_pct": round(float(return_120d), 2),
+        "rps_120": round(rps_120, 1) if rps_120 is not None else None,
         "amount_cny": round(float(latest["amount"]), 2),
         "volume": round(float(latest["volume"]), 2),
         "score": round(float(score), 2),
-        "conditions": conditions,
-        "cup_handle_details": cup_handle_details,
-        "vcp_details": vcp_details,
-        "pullback_details": pullback_details,
+        "conditions": json.dumps(_to_json_safe(conditions), ensure_ascii=False),
+        "cup_vcp_score": cup_vcp_score,
+        "roe": roe,
+        "cup_handle_details": json.dumps(_to_json_safe(cup_handle_details), ensure_ascii=False),
+        "vcp_details": json.dumps(_to_json_safe(vcp_details), ensure_ascii=False),
+        "pullback_details": json.dumps(_to_json_safe(pullback_details), ensure_ascii=False),
         "financial_pass": fin_pass,
         "financial_score": fin_score,
         "market_cap_cny": get_market_cap(code, close, market_caps) if market_caps else 0,
@@ -928,9 +762,11 @@ def analyze_stage2(
     code: str, name: str, industry: str, history: pd.DataFrame,
     financial_cache: dict | None = None,
     market_caps: dict[str, float] | None = None,
+    rps_120: float | None = None,
 ) -> dict | None:
     result = evaluate_stage2(code, name, industry, history,
-                             financial_cache=financial_cache, market_caps=market_caps)
+                             financial_cache=financial_cache, market_caps=market_caps,
+                             rps_120=rps_120)
     if not result.get("is_stage2"):
         return None
     return result
@@ -940,12 +776,15 @@ def scan_one(
     row: pd.Series, industry_map: dict[str, str], args: argparse.Namespace,
     financial_cache: dict | None = None,
     market_caps: dict[str, float] | None = None,
+    rps_map: dict[str, float] | None = None,
 ) -> dict | None:
     code = row["代码"]
     name = row["名称"]
     history = fetch_history(code, args.min_history_days, args.sleep_seconds)
+    rps_120 = rps_map.get(code) if rps_map else None
     return analyze_stage2(code, name, industry_map.get(code, "Unknown"), history,
-                          financial_cache=financial_cache, market_caps=market_caps)
+                          financial_cache=financial_cache, market_caps=market_caps,
+                          rps_120=rps_120)
 
 
 def main() -> int:
@@ -963,10 +802,22 @@ def main() -> int:
         f"offset={args.offset}, limit={args.limit}, industry mappings={len(industry_map)}..."
     )
 
+    # ── 批量计算 120 日 RPS ──
+    print("Calculating 120-day RPS for all stocks...")
+    rps_returns: dict[str, float] = {}
+    for index, row in pool.iterrows():
+        code = row["代码"]
+        hist = fetch_history(code, 130, args.sleep_seconds)
+        if hist is not None and len(hist) >= 121:
+            rps_returns[code] = (hist["close"].iloc[-1] / hist["close"].iloc[-121] - 1) * 100
+    rps_map = calc_all_rps(rps_returns) if rps_returns else {}
+    print(f"RPS calculated for {len(rps_map)} stocks")
+
     matches: list[dict] = []
     for index, row in pool.iterrows():
         try:
-            result = scan_one(row, industry_map, args, financial_cache=financial_cache, market_caps=market_caps)
+            result = scan_one(row, industry_map, args, financial_cache=financial_cache,
+                              market_caps=market_caps, rps_map=rps_map)
             if result:
                 matches.append(result)
                 print(f"MATCH {result['code']} {result['name']} {result['industry']} score={result['score']}")
@@ -982,8 +833,15 @@ def main() -> int:
         result_df = result_df.sort_values(["score", "amount_cny"], ascending=[False, False])
 
     output = Path(args.output)
-    result_df.to_csv(output, index=False, encoding="utf-8-sig")
+    result_df.to_csv(output, index=False, encoding="utf-8")
     print(f"Saved {len(result_df)} SEPA Stage 2 candidates to {output}")
+
+    # 输出全市场 RPS 缓存，供手动评估查询
+    rps_out = Path("rps_all.csv")
+    pd.DataFrame({"code": list(rps_map.keys()), "rps_120": list(rps_map.values())}).to_csv(
+        rps_out, index=False, encoding="utf-8")
+    print(f"Saved {len(rps_map)} RPS records to {rps_out}")
+
     return 0
 
 

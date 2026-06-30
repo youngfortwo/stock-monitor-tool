@@ -50,7 +50,17 @@ def merge_and_write(pattern: str, output: str, sort_cols: list[str]) -> int:
     existing = [c for c in sort_cols if c in result.columns]
     if existing:
         result = result.sort_values(existing, ascending=[False] * len(existing))
-    result.to_csv(output, index=False, encoding="utf-8-sig")
+    import re as _re
+    for col in ["conditions", "cup_handle_details", "vcp_details", "pullback_details"]:
+        if col in result.columns:
+            result[col] = result[col].astype(str).str.replace(r"np\.True_", "true", regex=True)
+            result[col] = result[col].astype(str).str.replace(r"np\.False_", "false", regex=True)
+            result[col] = result[col].astype(str).str.replace(r"np\.float64\(([\d.]+)\)", r"\1", regex=True)
+            result[col] = result[col].astype(str).str.replace(r"np\.int64\((\d+)\)", r"\1", regex=True)
+            result[col] = result[col].astype(str).str.replace("'", '"', regex=False)
+            result[col] = result[col].astype(str).str.replace(r"\bTrue\b", "true", regex=True)
+            result[col] = result[col].astype(str).str.replace(r"\bFalse\b", "false", regex=True)
+    result.to_csv(output, index=False, encoding="utf-8")
     return len(result)
 
 
