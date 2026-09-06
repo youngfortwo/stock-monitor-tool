@@ -58,6 +58,20 @@ kline_*.png
 *_candidates.csv
 stock_candidates.csv
 
+# 本地数据快照与缓存（不入库）
+industry_rank_history/
+concept_rank_history/
+industry_classification_cache.json
+concept_map_cache.json
+*.db
+*.db-shm
+*.db-wal
+*.tar.gz
+
+# 本机 launchd 配置与分析图（部署时生成）
+com.stock.*.plist
+*_analysis*.png
+
 # 环境变量与密钥
 .env
 .env.*
@@ -67,3 +81,6 @@ config_secret.json
 .pytest_cache/
 .coverage
 htmlcov/
+
+# 扫描机独立仓库（有自己远程，扫描机经此 pull 部署）
+sepa_stage2_agent/

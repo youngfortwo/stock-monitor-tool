@@ -13,13 +13,25 @@ ATR_STOP_MULTIPLE = 2.0
 TARGET_RR_RATIO = 2.0
 
 
+def _market_symbol(code: str) -> str:
+    """股票代码转为新浪格式（sh600519 / sz000402）"""
+    code = str(code).zfill(6)
+    return f"sh{code}" if code.startswith(("6", "9")) else f"sz{code}"
+
+
+def _date_yyyymmdd(days_back: int = 0) -> str:
+    """返回 N 天前的 YYYYMMDD 格式日期"""
+    from datetime import datetime, timedelta
+    d = datetime.now() - timedelta(days=days_back)
+    return d.strftime("%Y%m%d")
+
+
 def get_stock_data(code: str, days: int = 365) -> pd.DataFrame:
     """获取A股前复权日线行情数据（新浪接口，与项目已有数据源一致）"""
-    from sepa_stage2_scanner import market_symbol, date_yyyymmdd, today_yyyymmdd
     df = ak.stock_zh_a_daily(
-        symbol=market_symbol(code),
-        start_date=date_yyyymmdd(520),
-        end_date=today_yyyymmdd(),
+        symbol=_market_symbol(code),
+        start_date=_date_yyyymmdd(520),
+        end_date=_date_yyyymmdd(),
         adjust="qfq",
     )
     df.rename(columns={
@@ -32,6 +44,9 @@ def get_stock_data(code: str, days: int = 365) -> pd.DataFrame:
     df.set_index("date", inplace=True)
     if "pct_chg" not in df.columns:
         df["pct_chg"] = df["close"].pct_change() * 100
+    # 字段兼容：akshare 新浪接口返回 amount（成交额），可能没有 turnover
+    if "turnover" not in df.columns and "amount" in df.columns:
+        df["turnover"] = df["amount"]
     return df.sort_index()
 
 
@@ -46,9 +61,11 @@ def calc_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
     delta = df["close"].diff()
     gain = delta.where(delta > 0, 0)
     loss = -delta.where(delta < 0, 0)
-    avg_gain = gain.rolling(14).mean()
-    avg_loss = loss.rolling(14).mean()
-    df["rsi"] = 100 - (100 / (1 + avg_gain / avg_loss))
+    # Wilder's RSI（和通达信/同花顺/TradingView 一致）
+    avg_gain = gain.ewm(alpha=1/14, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1/14, adjust=False).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    df["rsi"] = 100 - (100 / (1 + rs))
     df["boll_mid"] = df["ma20"]
     df["boll_std"] = df["close"].rolling(20).std()
     df["boll_upper"] = df["boll_mid"] + 2 * df["boll_std"]
@@ -60,8 +77,26 @@ def calc_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df["atr"] = tr.rolling(14).mean()
     df["vol_ma5"] = df["volume"].rolling(5).mean()
     df["vol_ma10"] = df["volume"].rolling(10).mean()
-    df["price_rank"] = df["close"].rank(pct=True)
+    df["price_rank"] = df["close"].rolling(250, min_periods=20).rank(pct=True)
     return df.dropna()
+
+
+def _range_extreme(df: pd.DataFrame, idx_start, idx_end, col: str, mode: str):
+    """在 df 的 [idx_start, idx_end] 标签范围内找 col 列的极值。
+
+    用于头肩顶/底形态中精准定位颈线点（限定在左肩-头部、头部-右肩之间）。
+    使用 .loc 按日期标签切片，兼容 Timestamp 索引。
+    """
+    if df is None:
+        return None
+    try:
+        sub = df.loc[idx_start:idx_end]
+        if sub.empty:
+            return None
+        vals = sub[col]
+        return float(vals.max() if mode == "max" else vals.min())
+    except Exception:
+        return None
 
 
 def find_peaks_troughs(df: pd.DataFrame, window: int = PEAK_WINDOW, lookback: int = 120) -> tuple:
@@ -69,6 +104,18 @@ def find_peaks_troughs(df: pd.DataFrame, window: int = PEAK_WINDOW, lookback: in
     roll = window * 2 + 1
     peaks = df["high"].where(df["high"] == df["high"].rolling(roll, center=True).max(), np.nan)
     troughs = df["low"].where(df["low"] == df["low"].rolling(roll, center=True).min(), np.nan)
+
+    # 右边界补偿：最后 window 根 K 线无法被 center=True 检测到，用局部极值补上
+    for i in range(max(0, len(df) - window), len(df)):
+        idx = df.index[i]
+        start = max(0, i - window)
+        end = min(len(df), i + window + 1)
+        local = df.iloc[start:end]
+        if df.loc[idx, "high"] == local["high"].max():
+            peaks[idx] = df.loc[idx, "high"]
+        if df.loc[idx, "low"] == local["low"].min():
+            troughs[idx] = df.loc[idx, "low"]
+
     return peaks.dropna(), troughs.dropna()
 
 
@@ -261,31 +308,56 @@ def detect_vcp(df: pd.DataFrame) -> dict:
     if len(peaks) < 3 or len(troughs) < 2:
         result["说明"] = "极值点不足"
         return result
+
+    # 构建 zigzag 交替序列：合并 peaks 和 troughs，去除同类型连续点
+    all_extremes = sorted(
+        [(d, p, "peak") for d, p in peaks.items()]
+        + [(d, t, "trough") for d, t in troughs.items()],
+        key=lambda x: x[0],
+    )
+    zigzag = []
+    for ext in all_extremes:
+        if not zigzag:
+            zigzag.append(ext)
+            continue
+        last = zigzag[-1]
+        if last[2] == ext[2]:
+            # 同类型：保留更极端的
+            if ext[2] == "peak" and ext[1] > last[1]:
+                zigzag[-1] = ext
+            elif ext[2] == "trough" and ext[1] < last[1]:
+                zigzag[-1] = ext
+        else:
+            zigzag.append(ext)
+
+    # 从交替序列构建回调波段（peak → trough 为一段回调）
     waves = []
-    peak_list = peaks.tolist()
-    peak_dates = peaks.index.tolist()
-    trough_list = troughs.tolist()
-    trough_dates = troughs.index.tolist()
-    for i in range(len(peak_list) - 1):
-        post = [t for t in trough_dates if t > peak_dates[i]]
-        if not post: continue
-        td = post[0]; t_idx = trough_dates.index(td)
-        drawdown = (peak_list[i] - trough_list[t_idx]) / peak_list[i]
-        period_vol = float(df.loc[peak_dates[i]:td, "volume"].mean())
-        waves.append({"peak_price": peak_list[i], "trough_price": trough_list[t_idx],
-                        "drawdown": drawdown, "avg_vol": period_vol})
+    for i in range(len(zigzag) - 1):
+        if zigzag[i][2] == "peak" and zigzag[i + 1][2] == "trough":
+            peak_date, peak_price = zigzag[i][0], zigzag[i][1]
+            trough_date, trough_price = zigzag[i + 1][0], zigzag[i + 1][1]
+            drawdown = (peak_price - trough_price) / peak_price
+            period_vol = float(df.loc[peak_date:trough_date, "volume"].mean())
+            waves.append({"peak_price": peak_price, "trough_price": trough_price,
+                          "drawdown": drawdown, "avg_vol": period_vol})
     waves = waves[-4:]
     if len(waves) < 2:
         result["说明"] = "有效回调波段不足"
         return result
     drawdowns = [w["drawdown"] for w in waves]
     vols = [w["avg_vol"] for w in waves]
-    is_contracting = all(drawdowns[i] > drawdowns[i + 1] for i in range(len(drawdowns) - 1))
-    vol_contracting = all(vols[i] > vols[i + 1] for i in range(len(vols) - 1))
-    if is_contracting and vol_contracting:
+    # 允许10%容差：下一段回调不超过上一段的110%即视为收缩
+    is_contracting = all(drawdowns[i + 1] <= drawdowns[i] * 1.1 for i in range(len(drawdowns) - 1))
+    # 量能允许15%容差
+    vol_contracting = all(vols[i + 1] <= vols[i] * 1.15 for i in range(len(vols) - 1))
+    # 检查当前价格是否接近最后一个峰位（突破点）
+    last_peak = waves[-1]["peak_price"]
+    current_close = float(latest["close"])
+    near_breakout = current_close >= last_peak * 0.93  # 距突破点不超过7%
+    if is_contracting and vol_contracting and near_breakout:
         cr = drawdowns[-1] / drawdowns[0] if drawdowns[0] else 1
-        last_peak = waves[-1]["peak_price"]
-        base_height = waves[0]["peak_price"] - waves[0]["trough_price"]
+        # 目标价用末段回调高度（而非首段，避免高估）
+        base_height = waves[-1]["peak_price"] - waves[-1]["trough_price"]
         target_price = last_peak + base_height
         result.update({
             "是否成立": True, "强度": 85 if cr < 0.5 else 70,
@@ -293,11 +365,19 @@ def detect_vcp(df: pd.DataFrame) -> dict:
             "各段回调幅度": [f"{d*100:.2f}%" for d in drawdowns],
             "量能收缩情况": "逐次递减" if vol_contracting else "未同步收缩",
             "波动收缩率": f"{cr*100:.1f}%（末段/首段）",
+            "接近突破点": near_breakout,
             "目标位": round(target_price, 2),
-            "说明": f"已形成{len(waves)}段收缩结构"
+            "说明": f"已形成{len(waves)}段收缩结构，距突破点{(1-current_close/last_peak)*100:.1f}%"
         })
     else:
-        result["说明"] = "未呈现逐次收缩"
+        reasons = []
+        if not is_contracting:
+            reasons.append("回调未收缩")
+        if not vol_contracting:
+            reasons.append("量能未收缩")
+        if not near_breakout:
+            reasons.append(f"距突破点较远({(1-current_close/last_peak)*100:.1f}%)")
+        result["说明"] = "；".join(reasons) if reasons else "未呈现逐次收缩"
     return result
 
 
@@ -347,37 +427,98 @@ def detect_double_top(peaks, troughs, latest_price) -> dict:
     return result
 
 
-def detect_head_shoulders_bottom(peaks, troughs) -> dict:
+def detect_head_shoulders_bottom(peaks, troughs, df: pd.DataFrame = None) -> dict:
+    """检测头肩底（看涨反转）。
+
+    颈线点必须严格位于 左肩-头部之间 / 头部-右肩之间，
+    不能用全局 troughs[-2/-1] 简单截取（容易取到左肩之前的低点）。
+    """
     result = {"形态": "头肩底", "类型": "看涨反转", "是否成立": False, "强度": 0, "说明": ""}
     if len(troughs) < 3 or len(peaks) < 2:
         result["说明"] = "极值点不足"; return result
     left, head, right = troughs.iloc[-3], troughs.iloc[-2], troughs.iloc[-1]
-    if head < left and head < right and abs(left - right) / left < 0.06:
-        neckline = (peaks.iloc[-2] + peaks.iloc[-1]) / 2
-        target = neckline + (neckline - head)
-        result.update({
-            "是否成立": True, "颈线位": round(neckline, 2), "目标位": round(target, 2),
-            "强度": 85, "说明": f"左肩{left:.2f}/头部{head:.2f}/右肩{right:.2f}"
-        })
-    else:
-        result["说明"] = "结构不满足"
+    if not (head < left and head < right and abs(left - right) / left < 0.06):
+        result["说明"] = "结构不满足"; return result
+
+    # 颈线点：在左肩-头部之间、头部-右肩之间分别找最高价高点
+    left_idx, head_idx, right_idx = troughs.index[-3], troughs.index[-2], troughs.index[-1]
+    neck_left = _range_extreme(df, left_idx, head_idx, "high", "max")
+    neck_right = _range_extreme(df, head_idx, right_idx, "high", "max")
+    if neck_left is None or neck_right is None:
+        result["说明"] = "颈线点缺失"; return result
+
+    # 颈线斜率：头肩底颈线应水平或略上倾（上涨承接），明显下倾则形态破坏
+    neckline = (neck_left + neck_right) / 2
+    neck_slope = (neck_right - neck_left) / neck_left if neck_left > 0 else 0
+    if neck_slope < -0.05:  # 颈线下倾超过5%视为形态破坏
+        result["说明"] = f"颈线下倾{neck_slope*100:.1f}%，形态破坏"; return result
+
+    # 价格确认：当前价已跌破头部，头肩底被否定
+    if df is not None:
+        current_price = float(df.iloc[-1]["close"])
+        if current_price < head * 1.02:  # 容差2%
+            result["说明"] = f"当前价{current_price:.2f}接近/低于头部{head:.2f}，形态被否定"
+            return result
+
+    target = neckline + (neckline - head)
+    # 强度调整：颈线越平 + 头部越深 + 左右肩越对称，强度越高
+    shoulder_sym = 1 - abs(left - right) / left
+    head_depth = (neckline - head) / neckline if neckline > 0 else 0
+    strength = int(70 + shoulder_sym * 15 + min(head_depth * 5, 10))
+    strength = min(strength, 90)
+    result.update({
+        "是否成立": True, "颈线位": round(neckline, 2), "目标位": round(target, 2),
+        "强度": strength,
+        "说明": f"左肩{left:.2f}/头部{head:.2f}/右肩{right:.2f}，颈线{neck_left:.2f}→{neck_right:.2f}"
+    })
     return result
 
 
-def detect_head_shoulders_top(peaks, troughs) -> dict:
+def detect_head_shoulders_top(peaks, troughs, df: pd.DataFrame = None) -> dict:
+    """检测头肩顶（看跌反转）。
+
+    关键修复：
+    1. 颈线点必须取自 左肩-头部之间 / 头部-右肩之间 的低点，不能用全局 troughs[-2/-1]
+    2. 颈线斜率过滤：明显上倾（>3%）说明低点抬高，形态破坏
+    3. 价格确认：当前价已超头部则形态被否定（头肩顶是顶部反转，价格不该再创新高）
+    """
     result = {"形态": "头肩顶", "类型": "看跌反转", "是否成立": False, "强度": 0, "说明": ""}
     if len(peaks) < 3 or len(troughs) < 2:
         result["说明"] = "极值点不足"; return result
     left, head, right = peaks.iloc[-3], peaks.iloc[-2], peaks.iloc[-1]
-    if head > left and head > right and abs(left - right) / left < 0.06:
-        neckline = (troughs.iloc[-2] + troughs.iloc[-1]) / 2
-        target = neckline - (head - neckline)
-        result.update({
-            "是否成立": True, "颈线位": round(neckline, 2), "目标位": round(target, 2),
-            "强度": 85, "说明": f"左肩{left:.2f}/头部{head:.2f}/右肩{right:.2f}"
-        })
-    else:
-        result["说明"] = "结构不满足"
+    if not (head > left and head > right and abs(left - right) / left < 0.06):
+        result["说明"] = "结构不满足"; return result
+
+    # 颈线点：在左肩-头部之间、头部-右肩之间分别找最低价低点
+    left_idx, head_idx, right_idx = peaks.index[-3], peaks.index[-2], peaks.index[-1]
+    neck_left = _range_extreme(df, left_idx, head_idx, "low", "min")
+    neck_right = _range_extreme(df, head_idx, right_idx, "low", "min")
+    if neck_left is None or neck_right is None:
+        result["说明"] = "颈线点缺失"; return result
+
+    # 颈线斜率：头肩顶颈线应水平或略下倾，上倾>3%说明低点抬高，形态破坏
+    neckline = (neck_left + neck_right) / 2
+    neck_slope = (neck_right - neck_left) / neck_left if neck_left > 0 else 0
+    if neck_slope > 0.03:
+        result["说明"] = f"颈线上倾{neck_slope*100:.1f}%，形态破坏"; return result
+
+    # 价格确认：当前价已超头部，头肩顶被否定
+    if df is not None:
+        current_price = float(df.iloc[-1]["close"])
+        if current_price > head * 0.98:  # 容差2%
+            result["说明"] = f"当前价{current_price:.2f}接近/超过头部{head:.2f}，形态被否定"
+            return result
+
+    target = neckline - (head - neckline)
+    shoulder_sym = 1 - abs(left - right) / left
+    head_premium = (head - neckline) / neckline if neckline > 0 else 0
+    strength = int(70 + shoulder_sym * 15 + min(head_premium * 5, 10))
+    strength = min(strength, 90)
+    result.update({
+        "是否成立": True, "颈线位": round(neckline, 2), "目标位": round(target, 2),
+        "强度": strength,
+        "说明": f"左肩{left:.2f}/头部{head:.2f}/右肩{right:.2f}，颈线{neck_left:.2f}→{neck_right:.2f}"
+    })
     return result
 
 
@@ -439,26 +580,83 @@ def detect_box_range(df: pd.DataFrame, window: int = 30) -> dict:
 
 
 def detect_cup_handle(df, peaks, troughs) -> dict:
+    """杯柄形态（优化版）：
+    杯身 = 左杯沿高点 → 杯底 → 右杯沿高点（U形）
+    柄部 = 右杯沿之后的**向下倾斜整理通道**（高点逐次降低）
+    量能验证：杯底区域缩量
+    """
     result = {"形态": "杯柄形态", "类型": "看涨持续", "是否成立": False, "强度": 0, "说明": ""}
-    if len(troughs) < 2 or len(peaks) < 3:
-        result["说明"] = "极值点不足"; return result
+
+    if len(troughs) < 3 or len(peaks) < 3:
+        result["说明"] = "极值点不足"
+        return result
+
+    # 结构：peak[-3]左杯沿 → trough[-2]杯底 → peak[-2]右杯沿 → trough[-1]柄底
+    cup_l_px = float(peaks.iloc[-3]); cup_l_dt = peaks.index[-3]
+    cup_b_px = float(troughs.iloc[-2]); cup_b_dt = troughs.index[-2]
+    cup_r_px = float(peaks.iloc[-2]); cup_r_dt = peaks.index[-2]
+    handle_b_px = float(troughs.iloc[-1]); handle_b_dt = troughs.index[-1]
+
+    # ===== 时间顺序校验 =====
+    if not (cup_l_dt < cup_b_dt < cup_r_dt < handle_b_dt):
+        result["说明"] = "极值点时间顺序不满足杯柄结构"
+        return result
+
+    # ===== 杯身校验 =====
+    cup_peak_diff = abs(cup_l_px - cup_r_px) / cup_l_px  # 左右杯沿高度差
+    cup_depth = (cup_l_px - cup_b_px) / cup_l_px          # 杯身深度
+    cup_ok = cup_peak_diff < 0.08 and 0.12 < cup_depth < 0.35
+
+    # ===== 柄部校验（新增：下行通道） =====
+    handle_period = df.loc[cup_r_dt:handle_b_dt]
+    if len(handle_period) < 5:
+        result["说明"] = "柄部区间太短，无法验证通道"
+        return result
+
+    handle_depth = (cup_r_px - handle_b_px) / cup_r_px
+    handle_depth_ok = handle_depth < cup_depth * 0.5
+
+    # 柄部高点逐次降低（用滚动高点判断下行通道）
+    handle_highs = handle_period["high"].rolling(5, center=True).max().dropna()
+    if len(handle_highs) >= 3:
+        first_half_high = handle_highs.iloc[:len(handle_highs)//2].max()
+        second_half_high = handle_highs.iloc[len(handle_highs)//2:].max()
+        handle_trend_down = second_half_high < first_half_high * 0.98
+    else:
+        handle_trend_down = handle_period["high"].iloc[0] > handle_period["high"].iloc[-1]
+
+    # ===== 量能验证 =====
     try:
-        cup_l = peaks.iloc[-3]; cup_b = troughs.iloc[-2]
-        cup_r = peaks.iloc[-2]; handle_l = troughs.iloc[-1]
-        cup_peak_diff = abs(cup_l - cup_r) / cup_l
-        cup_depth = (cup_l - cup_b) / cup_l
-        handle_depth = (cup_r - handle_l) / cup_r
-        if cup_peak_diff < 0.06 and 0.12 < cup_depth < 0.35 and handle_depth < cup_depth * 0.5:
-            target = cup_l + (cup_l - cup_b)
-            result.update({
-                "是否成立": True, "突破位": round(cup_l, 2), "目标位": round(target, 2),
-                "强度": int((1 - cup_peak_diff) * 30 + 70),
-                "说明": f"杯身深度{cup_depth*100:.1f}%，柄部回撤{handle_depth*100:.1f}%"
-            })
-        else:
-            result["说明"] = "不满足杯柄结构"
-    except:
-        result["说明"] = "结构不完整"
+        vol_left = df.loc[cup_l_dt:cup_b_dt, "volume"].mean()
+        vol_right = df.loc[cup_b_dt:cup_r_dt, "volume"].mean()
+        vol_shrink = vol_right < vol_left * 0.85
+    except Exception:
+        vol_shrink = False
+
+    # ===== 综合判断 =====
+    if cup_ok and handle_depth_ok and handle_trend_down:
+        target = cup_l_px + (cup_l_px - cup_b_px)
+        strength = 70
+        if vol_shrink:
+            strength += 10
+        strength += min(int((1 - cup_peak_diff) * 20), 10)
+        result.update({
+            "是否成立": True,
+            "突破位": round(cup_l_px, 2),
+            "目标位": round(target, 2),
+            "强度": min(strength, 92),
+            "量能萎缩": vol_shrink,
+            "说明": (f"杯深{cup_depth*100:.1f}%，柄回撤{handle_depth*100:.1f}%，"
+                     f"柄部下行通道{'确认' if handle_trend_down else '待确认'}，"
+                     f"{'杯底缩量' if vol_shrink else '量能未明显萎缩'}")
+        })
+    elif cup_ok and not handle_depth_ok:
+        result["说明"] = f"杯身成立但柄部回撤过大({handle_depth*100:.1f}% > 杯深50%)"
+    elif cup_ok and not handle_trend_down:
+        result["说明"] = "杯身成立但柄部未形成下行通道"
+    else:
+        result["说明"] = f"不满足杯身结构(杯深{cup_depth*100:.1f}%，沿差{cup_peak_diff*100:.1f}%)"
+
     return result
 
 
@@ -581,7 +779,11 @@ def detect_bull_flag(df, peaks, troughs) -> dict:
     if not (latest["close"] > latest["ma60"] and latest["ma20"] > latest["ma60"]):
         result["说明"] = "非上升趋势"; return result
     if peaks.iloc[-2] > peaks.iloc[-1] and troughs.iloc[-2] > troughs.iloc[-1]:
-        target = peaks.iloc[-2] + peaks.iloc[-2] * 0.1
+        # 旗杆高度 = 旗形前那波上涨的高度（旗杆起点取旗形前的最低谷）
+        pre_flag_troughs = troughs[troughs.index < peaks.index[-2]]
+        flagpole_start = pre_flag_troughs.iloc[-1] if len(pre_flag_troughs) > 0 else troughs.iloc[-2]
+        flagpole_height = peaks.iloc[-2] - flagpole_start
+        target = peaks.iloc[-2] + flagpole_height
         result.update({
             "是否成立": True, "突破位": round(peaks.iloc[-2], 2),
             "目标位": round(target, 2), "强度": 70,
@@ -600,7 +802,11 @@ def detect_bear_flag(df, peaks, troughs) -> dict:
     if not (latest["close"] < latest["ma60"] and latest["ma20"] < latest["ma60"]):
         result["说明"] = "非下降趋势"; return result
     if peaks.iloc[-2] < peaks.iloc[-1] and troughs.iloc[-2] < troughs.iloc[-1]:
-        target = troughs.iloc[-2] - troughs.iloc[-2] * 0.1
+        # 旗杆高度 = 旗形前那波下跌的高度（旗杆起点取旗形前的最高峰）
+        pre_flag_peaks = peaks[peaks.index < troughs.index[-2]]
+        flagpole_start = pre_flag_peaks.iloc[-1] if len(pre_flag_peaks) > 0 else peaks.iloc[-2]
+        flagpole_height = flagpole_start - troughs.iloc[-2]
+        target = troughs.iloc[-2] - flagpole_height
         result.update({
             "是否成立": True, "破位位": round(troughs.iloc[-2], 2),
             "目标位": round(target, 2), "强度": 70,
@@ -657,25 +863,266 @@ def detect_rising_wedge(df, peaks, troughs) -> dict:
     return result
 
 
+def detect_three_white_soldiers(df) -> dict:
+    """红三兵：连续三根阳线，收盘价逐步抬高，看涨信号"""
+    result = {"形态": "红三兵", "类型": "看涨反转", "是否成立": False, "强度": 0, "说明": ""}
+    if len(df) < 3:
+        result["说明"] = "数据不足"; return result
+
+    # 取最近3根K线
+    last3 = df.iloc[-3:]
+
+    # 检查是否都是阳线（收盘>开盘）
+    candle_types = ["阳" if row["close"] > row["open"] else "阴" for _, row in last3.iterrows()]
+    all_positive = all(ct == "阳" for ct in candle_types)
+    if not all_positive:
+        result["说明"] = f"非三根阳线（最近3根: {candle_types[0]}、{candle_types[1]}、{candle_types[2]}）"; return result
+    
+    # 检查收盘价逐步抬高
+    closes = last3["close"].values
+    if not (closes[0] < closes[1] < closes[2]):
+        result["说明"] = "收盘价未逐步抬高"; return result
+    
+    # 检查开盘价在前一根实体内（或略高）
+    opens = last3["open"].values
+    body_ok = True
+    for i in range(1, 3):
+        prev_open = last3.iloc[i-1]["open"]
+        prev_close = last3.iloc[i-1]["close"]
+        curr_open = last3.iloc[i]["open"]
+        # 开盘价应在前一根实体范围内（允许略高）
+        if not (prev_open <= curr_open <= prev_close * 1.02):
+            body_ok = False
+            break
+    
+    if not body_ok:
+        result["说明"] = "开盘价位置不符合"; return result
+    
+    # 检查成交量（可选，增强信号）
+    volumes = last3["volume"].values
+    vol_increasing = volumes[0] < volumes[1] < volumes[2]
+    
+    # 计算强度
+    strength = 60
+    if vol_increasing:
+        strength += 15
+    if closes[2] > closes[0] * 1.05:  # 涨幅超过5%
+        strength += 10
+    
+    result.update({
+        "是否成立": True,
+        "强度": min(strength, 90),
+        "说明": f"连续三阳，逐步走高{'，量能配合' if vol_increasing else ''}"
+    })
+    return result
+
+
+def detect_three_black_crows(df) -> dict:
+    """黑三兵：连续三根阴线，收盘价逐步降低，看跌信号"""
+    result = {"形态": "黑三兵", "类型": "看跌反转", "是否成立": False, "强度": 0, "说明": ""}
+    if len(df) < 3:
+        result["说明"] = "数据不足"; return result
+    
+    # 取最近3根K线
+    last3 = df.iloc[-3:]
+    
+    # 检查是否都是阴线（收盘<开盘）
+    all_negative = all(row["close"] < row["open"] for _, row in last3.iterrows())
+    if not all_negative:
+        result["说明"] = "非三根阴线"; return result
+    
+    # 检查收盘价逐步降低
+    closes = last3["close"].values
+    if not (closes[0] > closes[1] > closes[2]):
+        result["说明"] = "收盘价未逐步降低"; return result
+    
+    # 检查开盘价在前一根实体内（或略低）
+    opens = last3["open"].values
+    body_ok = True
+    for i in range(1, 3):
+        prev_open = last3.iloc[i-1]["open"]
+        prev_close = last3.iloc[i-1]["close"]
+        curr_open = last3.iloc[i]["open"]
+        # 开盘价应在前一根实体范围内（允许略低）
+        if not (prev_close * 0.98 <= curr_open <= prev_open):
+            body_ok = False
+            break
+    
+    if not body_ok:
+        result["说明"] = "开盘价位置不符合"; return result
+    
+    # 检查成交量（可选，增强信号）
+    volumes = last3["volume"].values
+    vol_increasing = volumes[0] < volumes[1] < volumes[2]
+    
+    # 计算强度
+    strength = 60
+    if vol_increasing:
+        strength += 15
+    if closes[0] > closes[2] * 1.05:  # 跌幅超过5%
+        strength += 10
+    
+    result.update({
+        "是否成立": True,
+        "强度": min(strength, 90),
+        "说明": f"连续三阴，逐步走低{'，放量下跌' if vol_increasing else ''}"
+    })
+    return result
+
+
+def detect_bullish_engulfing(df) -> dict:
+    """看涨吞没：前阴后阳，阳线实体完全包住前一根阴线实体"""
+    result = {"形态": "看涨吞没", "类型": "看涨反转", "是否成立": False, "强度": 0, "说明": ""}
+    if len(df) < 2:
+        result["说明"] = "数据不足"
+        return result
+
+    prev, curr = df.iloc[-2], df.iloc[-1]
+
+    # 前一根必须是阴线，后一根必须是阳线
+    prev_bear = prev["close"] < prev["open"]
+    curr_bull = curr["close"] > curr["open"]
+    if not (prev_bear and curr_bull):
+        result["说明"] = "非前阴后阳结构"
+        return result
+
+    prev_body = prev["open"] - prev["close"]
+    curr_body = curr["close"] - curr["open"]
+
+    # 阳线实体完全包住阴线实体（开盘低于前收、收盘高于前开）
+    engulf_body = curr["open"] < prev["close"] and curr["close"] > prev["open"]
+
+    if engulf_body and curr_body > prev_body * 0.8:
+        body_ratio = curr_body / prev_body if prev_body > 0 else 1
+        # 底部出现强度更高：价格在20日均线以下
+        near_low = curr["close"] < curr.get("ma20", curr["close"] * 1.1)
+        strength = 70 + min(int(body_ratio * 8), 20) + (10 if near_low else 0)
+
+        result.update({
+            "是否成立": True,
+            "强度": min(strength, 92),
+            "说明": f"阳线实体是阴线的{body_ratio:.1f}倍{'，处于相对低位' if near_low else ''}"
+        })
+    else:
+        result["说明"] = "阳线未完全包住阴线实体"
+    return result
+
+
+def detect_bearish_engulfing(df) -> dict:
+    """看跌吞没：前阳后阴，阴线实体完全包住前一根阳线实体"""
+    result = {"形态": "看跌吞没", "类型": "看跌反转", "是否成立": False, "强度": 0, "说明": ""}
+    if len(df) < 2:
+        result["说明"] = "数据不足"
+        return result
+
+    prev, curr = df.iloc[-2], df.iloc[-1]
+
+    prev_bull = prev["close"] > prev["open"]
+    curr_bear = curr["close"] < curr["open"]
+    if not (prev_bull and curr_bear):
+        result["说明"] = "非前阳后阴结构"
+        return result
+
+    prev_body = prev["close"] - prev["open"]
+    curr_body = curr["open"] - curr["close"]
+
+    engulf_body = curr["open"] > prev["close"] and curr["close"] < prev["open"]
+
+    if engulf_body and curr_body > prev_body * 0.8:
+        body_ratio = curr_body / prev_body if prev_body > 0 else 1
+        near_high = curr["close"] > curr.get("ma20", curr["close"] * 0.9)
+        strength = 70 + min(int(body_ratio * 8), 20) + (10 if near_high else 0)
+
+        result.update({
+            "是否成立": True,
+            "强度": min(strength, 92),
+            "说明": f"阴线实体是阳线的{body_ratio:.1f}倍{'，处于相对高位' if near_high else ''}"
+        })
+    else:
+        result["说明"] = "阴线未完全包住阳线实体"
+    return result
+
+
+def detect_ma_squeeze_breakout(df) -> dict:
+    """均线粘合后发散：多条均线从极度收敛到快速散开，典型变盘前兆"""
+    result = {"形态": "均线粘合发散", "类型": "变盘信号", "是否成立": False,
+              "方向": "", "强度": 0, "说明": ""}
+
+    ma_cols = ["ma5", "ma10", "ma20", "ma60"]
+    if not all(m in df.columns for m in ma_cols):
+        result["说明"] = "均线数据不足"
+        return result
+    if len(df) < 10:
+        result["说明"] = "数据不足"
+        return result
+
+    latest = df.iloc[-1]
+    ref = df.iloc[-6]  # 5个交易日前作为粘合参考点
+
+    # 粘合度 = (最大均线 - 最小均线) / 最小均线
+    def spread(row):
+        vals = [row[m] for m in ma_cols]
+        return (max(vals) - min(vals)) / min(vals)
+
+    squeeze_before = spread(ref)
+    spread_now = spread(latest)
+
+    # 5日前粘合度 < 2.5% 视为高度粘合
+    was_squeezed = squeeze_before < 0.025
+    # 当前发散度 > 粘合时的 1.8 倍，且 > 3%
+    is_breaking = spread_now > squeeze_before * 1.8 and spread_now > 0.03
+
+    if was_squeezed and is_breaking:
+        # 判断方向：短均线在长均线上方 = 向上发散
+        if latest["ma5"] > latest["ma20"] and latest["ma10"] > latest["ma20"]:
+            direction = "向上发散"
+            result["类型"] = "看涨持续"
+        else:
+            direction = "向下发散"
+            result["类型"] = "看跌持续"
+
+        strength = 70 + min(int((spread_now - squeeze_before) * 1000), 20)
+
+        result.update({
+            "是否成立": True,
+            "方向": direction,
+            "强度": min(strength, 90),
+            "说明": f"5日前粘合度{squeeze_before*100:.2f}%，当前{spread_now*100:.2f}%，{direction}"
+        })
+    elif was_squeezed:
+        result["说明"] = f"均线粘合中({squeeze_before*100:.2f}%)，尚未选择方向"
+    else:
+        result["说明"] = f"未形成粘合（当前发散度{spread_now*100:.1f}%）"
+
+    return result
+
+
 def analyze_all_patterns(df: pd.DataFrame) -> dict:
     peaks, troughs = find_peaks_troughs(df)
     latest_price = df.iloc[-1]["close"]
+    # 头肩顶/底需要原始 df 来精准定位颈线点（peaks/troughs 的 index 来自截取后的 df）
+    df_lookback = df.iloc[-120:] if len(df) >= 120 else df
     pattern_list = [
         detect_vcp(df), detect_double_bottom(peaks, troughs, latest_price),
-        detect_head_shoulders_bottom(peaks, troughs),
+        detect_head_shoulders_bottom(peaks, troughs, df_lookback),
         detect_ascending_triangle(peaks, troughs),
         detect_cup_handle(df, peaks, troughs),
         detect_triple_bottom(peaks, troughs, latest_price),
         detect_rounding_bottom(df), detect_bull_flag(df, peaks, troughs),
         detect_falling_wedge(df, peaks, troughs),
         detect_double_top(peaks, troughs, latest_price),
-        detect_head_shoulders_top(peaks, troughs),
+        detect_head_shoulders_top(peaks, troughs, df_lookback),
         detect_descending_triangle(peaks, troughs),
         detect_triple_top(peaks, troughs, latest_price),
         detect_rounding_top(df), detect_broadening_top(peaks, troughs),
         detect_diamond_pattern(peaks, troughs),
         detect_bear_flag(df, peaks, troughs), detect_rising_wedge(df, peaks, troughs),
         detect_box_range(df),
+        detect_three_white_soldiers(df), detect_three_black_crows(df),
+        # ===== 新增 P0 形态 =====
+        detect_bullish_engulfing(df),
+        detect_bearish_engulfing(df),
+        detect_ma_squeeze_breakout(df),
     ]
     bullish, bearish, neutral = [], [], []
     for p in pattern_list:
@@ -683,6 +1130,20 @@ def analyze_all_patterns(df: pd.DataFrame) -> dict:
         if p["类型"] in ["看涨反转", "看涨持续"]: bullish.append(p)
         elif p["类型"] in ["看跌反转", "看跌持续", "顶部反转"]: bearish.append(p)
         else: neutral.append(p)
+
+    # 去重：VCP/杯柄/上升三角形/上升旗形 都是"收敛整理+看涨突破"，同类型只保留强度最高的
+    bull_cont_types = {"VCP波动收缩", "杯柄形态", "上升三角形", "上升旗形", "下降楔形"}
+    bull_cont = [p for p in bullish if p["形态"] in bull_cont_types]
+    if len(bull_cont) > 1:
+        best = max(bull_cont, key=lambda x: x.get("强度", 0))
+        bullish = [p for p in bullish if p["形态"] not in bull_cont_types] + [best]
+
+    bear_cont_types = {"下降三角形", "下降旗形", "上升楔形"}
+    bear_cont = [p for p in bearish if p["形态"] in bear_cont_types]
+    if len(bear_cont) > 1:
+        best = max(bear_cont, key=lambda x: x.get("强度", 0))
+        bearish = [p for p in bearish if p["形态"] not in bear_cont_types] + [best]
+
     return {
         "看涨形态": bullish, "看跌形态": bearish, "整理形态": neutral,
         "合计有效形态": len(bullish) + len(bearish) + len(neutral)
@@ -771,12 +1232,56 @@ def analyze_volume_price(df: pd.DataFrame) -> dict:
         "量能状态": vol_level,
         "相对5日均量": f"{vol_ratio_5:.2f}倍",
         "相对10日均量": f"{vol_ratio_10:.2f}倍",
-        "当日成交量": f"{latest['volume']/10000:.0f}万手"
+        "当日成交量": f"{latest['volume']/100/10000:.2f}万手"
     }
-    recent = df.iloc[-20:]
-    price_trend = "上升" if recent["close"].iloc[-1] > recent["close"].iloc[0] else "下降"
-    vol_trend = "递增" if recent["volume"].iloc[-5:].mean() > recent["volume"].iloc[:5].mean() else "递减"
-    if price_trend == "上升" and vol_trend == "递增":
+
+    # ===== #1 价格趋势：短期(5日) + 中期(20日) 双窗口判断 =====
+    recent_5 = df.iloc[-5:]
+    recent_20 = df.iloc[-20:]
+    x5 = np.arange(len(recent_5))
+    x20 = np.arange(len(recent_20))
+    slope_5 = np.polyfit(x5, recent_5["close"], 1)[0]
+    slope_20 = np.polyfit(x20, recent_20["close"], 1)[0]
+
+    # 短期趋势（5日，日均变化<0.3%视为横盘）
+    if abs(slope_5) / recent_5["close"].mean() < 0.003:
+        short_trend = "横盘"
+    else:
+        short_trend = "上升" if slope_5 > 0 else "下降"
+
+    # 中期趋势（20日，日均变化<0.2%视为横盘）
+    if abs(slope_20) / recent_20["close"].mean() < 0.002:
+        mid_trend = "横盘"
+    else:
+        mid_trend = "上升" if slope_20 > 0 else "下降"
+
+    # 主趋势：短期优先（更敏感反映近期走势）
+    price_trend = short_trend
+    trend_note = ""
+    if short_trend != mid_trend:
+        trend_note = f"（中期{mid_trend}，短期{short_trend}）"
+
+    # ===== #3 量能趋势用 vol_ma5 vs vol_ma20（替代前5后5均值）=====
+    vol_ma20_series = df["volume"].rolling(20).mean()
+    vol_ma20 = vol_ma20_series.iloc[-1]
+    vol_trend = "递增" if latest["vol_ma5"] > vol_ma20 else "递减"
+
+    # ===== #5 量价相关性（20日涨跌幅与成交量相关系数）=====
+    pct_chg_20 = recent_20["pct_chg"]
+    vol_corr = pct_chg_20.corr(recent_20["volume"])
+    if pd.isna(vol_corr):
+        vol_corr = 0.0
+    if vol_corr > 0.3:
+        corr_desc = "量价正相关，趋势健康"
+    elif vol_corr < -0.3:
+        corr_desc = "量价负相关，趋势存疑"
+    else:
+        corr_desc = "量价相关性弱"
+
+    # 趋势配合度（基于短期趋势判断，更贴近近期走势）
+    if price_trend == "横盘":
+        cooperation = "价格横盘整理，等待方向选择"; coop_score = 55
+    elif price_trend == "上升" and vol_trend == "递增":
         cooperation = "量价同步向上，上涨动能充足"; coop_score = 90
     elif price_trend == "上升" and vol_trend == "递减":
         cooperation = "价涨量缩，上涨动能衰减"; coop_score = 40
@@ -785,19 +1290,25 @@ def analyze_volume_price(df: pd.DataFrame) -> dict:
     else:
         cooperation = "价跌量缩，抛压逐步衰竭"; coop_score = 60
     result["趋势配合度"] = {
-        "价格趋势": price_trend, "量能趋势": vol_trend,
+        "价格趋势": f"{price_trend}{trend_note}", "量能趋势": vol_trend,
         "配合结论": cooperation, "配合度评分": coop_score
     }
+    result["量价相关性"] = {
+        "相关系数": round(vol_corr, 3),
+        "判定": corr_desc
+    }
+
+    # ===== #2 量价背离用 high/low 找极值（替代 close）=====
     divergence = {"顶背离": False, "底背离": False, "说明": "无量价背离"}
     v_recent = df.iloc[-60:]
     roll = 11
-    vp_max = v_recent["close"] == v_recent["close"].rolling(roll, center=True).max()
-    vp_min = v_recent["close"] == v_recent["close"].rolling(roll, center=True).min()
+    vp_max = v_recent["high"] == v_recent["high"].rolling(roll, center=True).max()
+    vp_min = v_recent["low"] == v_recent["low"].rolling(roll, center=True).min()
     price_peaks_v = v_recent[vp_max]
     price_troughs_v = v_recent[vp_min]
     if len(price_peaks_v) >= 2:
         dt1, dt2 = price_peaks_v.index[-2], price_peaks_v.index[-1]
-        p1, p2 = float(price_peaks_v["close"].iloc[-2]), float(price_peaks_v["close"].iloc[-1])
+        p1, p2 = float(price_peaks_v["high"].iloc[-2]), float(price_peaks_v["high"].iloc[-1])
         v1 = v_recent.loc[max(v_recent.index[0], dt1 - pd.Timedelta(days=5)):dt1 + pd.Timedelta(days=5), "volume"]
         v2 = v_recent.loc[max(v_recent.index[0], dt2 - pd.Timedelta(days=5)):dt2 + pd.Timedelta(days=5), "volume"]
         if p2 > p1 * 1.01 and float(v2.max()) < float(v1.max()) * 0.8:
@@ -805,7 +1316,7 @@ def analyze_volume_price(df: pd.DataFrame) -> dict:
             divergence["说明"] = f"价格新高({p2:.2f} > {p1:.2f})，但成交量未同步放大，上涨动力不足"
     if len(price_troughs_v) >= 2:
         dt1, dt2 = price_troughs_v.index[-2], price_troughs_v.index[-1]
-        p1, p2 = float(price_troughs_v["close"].iloc[-2]), float(price_troughs_v["close"].iloc[-1])
+        p1, p2 = float(price_troughs_v["low"].iloc[-2]), float(price_troughs_v["low"].iloc[-1])
         v1 = v_recent.loc[max(v_recent.index[0], dt1 - pd.Timedelta(days=5)):dt1 + pd.Timedelta(days=5), "volume"]
         v2 = v_recent.loc[max(v_recent.index[0], dt2 - pd.Timedelta(days=5)):dt2 + pd.Timedelta(days=5), "volume"]
         if p2 < p1 * 0.99 and float(v2.max()) < float(v1.max()) * 0.8:
@@ -813,28 +1324,64 @@ def analyze_volume_price(df: pd.DataFrame) -> dict:
             divergence["底背离"] = True
             divergence["说明"] = desc if not divergence["顶背离"] else f"{divergence['说明']}；{desc}"
     result["量价背离"] = divergence
+
+    # ===== 量能结构 + #6 堆量识别 =====
     patterns = []
     if latest["volume"] >= df.iloc[-60:]["volume"].max() * 0.95:
         patterns.append("天量成交（近60日峰值）")
     if latest["volume"] <= df.iloc[-60:]["volume"].min() * 1.05:
         patterns.append("地量成交（近60日地量）")
+    # 堆量：近5日有≥3天成交量 > 5日均量×1.2
+    recent_vol = df.iloc[-10:]["volume"]
+    vol_ma5_arr = recent_vol.rolling(5).mean()
+    if len(vol_ma5_arr.dropna()) >= 5:
+        stack_days = sum(recent_vol.iloc[-5:] > vol_ma5_arr.iloc[-5:] * 1.2)
+        if stack_days >= 3:
+            patterns.append(f"堆量结构（近5日有{stack_days}天放量）：资金持续进场")
     result["量能结构"] = patterns if patterns else ["无特殊标志性量能结构"]
+
+    # ===== #4 放量突破/缩量回踩/地量地价 信号 =====
+    extra_signals = []
+    high_20 = df.iloc[-20:]["high"].max()
+    if latest["close"] > high_20 and vol_ratio_5 > 1.3:
+        extra_signals.append("放量突破20日新高：突破有效，动能充足")
+    if (abs(latest["close"] / latest["ma20"] - 1) < 0.02
+            and vol_ratio_5 < 0.8
+            and latest["close"] > latest["ma20"]):
+        extra_signals.append("缩量回踩20日线：筹码稳定，健康调整")
+    low_60 = df.iloc[-60:]["low"].min()
+    if latest["close"] < low_60 * 1.05 and vol_ratio_5 < 0.6:
+        extra_signals.append("地量地价：抛压衰竭，可能接近底部")
+    result["量价信号"] = extra_signals if extra_signals else ["无特殊量价信号"]
+
+    # ===== #8 风险信号（放量滞涨加上影线判断）=====
     risks = []
+    upper_shadow = latest["high"] - max(latest["open"], latest["close"])
+    body = abs(latest["close"] - latest["open"])
     if vol_ratio_5 > 1.5 and abs(latest["pct_chg"]) < 1.0:
-        risks.append("放量滞涨：多空分歧剧烈")
+        if body > 0 and upper_shadow > body * 1.5:
+            risks.append("放量长上影滞涨：多头力竭，见顶信号较强")
+        else:
+            risks.append("放量滞涨：多空分歧剧烈")
     if latest["pct_chg"] > 1.0 and vol_ratio_5 < 0.8:
         risks.append("缩量上涨：缺乏量能支撑")
     result["风险信号"] = risks if risks else ["无明显量价风险信号"]
-    score = coop_score
-    if divergence["顶背离"]: score -= 20
-    if divergence["底背离"]: score += 15
+
+    # ===== #7 综合评分权重优化（从60起步，各项加减）=====
+    score = 60
+    score += vol_corr * 20  # 量价相关性 ±20
+    if divergence["顶背离"]: score -= 15
+    if divergence["底背离"]: score += 12
+    if extra_signals:
+        if any("放量突破" in s for s in extra_signals): score += 10
+        if any("地量地价" in s for s in extra_signals): score += 8
     if risks: score -= len(risks) * 10
     score = min(max(score, 0), 100)
     if score >= 80:      level = "健康"
     elif score >= 60:    level = "基本健康"
     elif score >= 40:    level = "中性偏弱"
     else:                level = "异常/危险"
-    result["综合量价健康度"] = {"评分": f"{score}/100", "等级": level}
+    result["综合量价健康度"] = {"评分": f"{round(score)}/100", "等级": level}
     return result
 
 
@@ -858,8 +1405,8 @@ def analyze_technical(code: str) -> dict:
         "latest": {
             "close": round(float(latest["close"]), 2),
             "pct_chg": round(float(latest["pct_chg"]), 2),
-            "volume_hands": f"{float(latest['volume'])/10000:.0f}万手",
-            "turnover": round(float(latest["turnover"]), 2) if "turnover" in df.columns else None,
+            "volume_hands": f"{float(latest['volume'])/100/10000:.2f}万手",
+            "turnover": round(float(latest["turnover"]) * 100, 2) if "turnover" in df.columns else None,
         },
         "ma": {
             "ma5": round(float(latest["ma5"]), 2),

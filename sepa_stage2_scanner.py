@@ -84,13 +84,48 @@ def today_yyyymmdd() -> str:
 
 
 def get_stock_pool(include_bj: bool, limit: int, offset: int) -> pd.DataFrame:
-    pool = ak.stock_info_a_code_name().rename(columns={"code": "代码", "name": "名称"})
-    pool = pool[["代码", "名称"]].copy()
+    """获取A股股票池。
+
+    优先级：
+      1. stock_info_a_code_name()（深交所 Excel，可能因 expat 不兼容失败）
+      2. stock_zh_a_spot_em() 全市场快照（不依赖 Excel，但可能被限流）
+      3. 本地行业分类缓存 industry_classification_cache.json（离线可用）
+    """
+    pool = None
+    try:
+        pool = ak.stock_info_a_code_name().rename(columns={"code": "代码", "name": "名称"})
+        pool = pool[["代码", "名称"]].copy()
+    except Exception:
+        pool = None
+
+    # Fallback 1: 全市场行情快照（不依赖 Excel 解析）
+    if pool is None or pool.empty:
+        try:
+            spot = ak.stock_zh_a_spot_em()
+            pool = spot[["代码", "名称"]].copy()
+        except Exception:
+            pool = None
+
+    # Fallback 2: 本地行业分类缓存（离线可用，5529只股票）
+    if pool is None or pool.empty:
+        import json as _json
+        from pathlib import Path as _Path
+        cache_file = _Path(__file__).parent / "industry_classification_cache.json"
+        if cache_file.exists():
+            data = _json.loads(cache_file.read_text(encoding="utf-8"))
+            stocks = data.get("stocks", {})
+            rows = [{"代码": str(c).zfill(6), "名称": info.get("name", "")}
+                    for c, info in stocks.items() if isinstance(info, dict)]
+            pool = pd.DataFrame(rows)
+
+    if pool is None or pool.empty:
+        raise RuntimeError("股票池获取失败：所有数据源均不可用")
+
     pool["代码"] = pool["代码"].astype(str).str.zfill(6)
     pool = pool[~pool["名称"].str.contains("ST|退", regex=True, na=False)]
 
     if not include_bj:
-        pool = pool[~pool["代码"].str.startswith(("8", "4"))]
+        pool = pool[~pool["代码"].str.startswith(("8", "4", "920"))]
     if offset > 0:
         pool = pool.iloc[offset:]
     if limit > 0:
@@ -101,6 +136,66 @@ def get_stock_pool(include_bj: bool, limit: int, offset: int) -> pd.DataFrame:
 
 def market_symbol(symbol: str) -> str:
     return f"sh{symbol}" if symbol.startswith(("6", "9")) else f"sz{symbol}"
+
+
+# 财报披露时间缓存
+_disclosure_cache: dict[str, str] = {}  # {code: first_reservation_date}
+_disclosure_period_fetched: str = ""    # 已拉取全量数据的报告期
+
+
+def _get_report_periods() -> list[str]:
+    """根据当前日期推断需要查询的报告期列表。"""
+    today = dt.date.today()
+    year = today.year
+    if today.month <= 4:
+        return [f"{year - 1}年报"]
+    elif today.month <= 8:
+        return [f"{year}半年报"]
+    elif today.month <= 10:
+        return [f"{year}三季"]
+    else:
+        return [f"{year}年报"]
+
+
+def _prefetch_disclosure_cache() -> None:
+    """预拉取全市场财报披露日期，构建 code→date 映射。
+
+    一次请求获取所有股票数据，避免每只股票重复调用 stock_report_disclosure()。
+    """
+    global _disclosure_cache, _disclosure_period_fetched
+
+    periods = _get_report_periods()
+    primary_period = periods[0]
+    if _disclosure_period_fetched == primary_period:
+        return  # 已拉取过
+
+    _disclosure_period_fetched = primary_period
+    for period in periods:
+        try:
+            df = ak.stock_report_disclosure(market="沪深京", period=period)
+            if df is None or df.empty:
+                continue
+            for _, row in df.iterrows():
+                code = str(row.get("股票代码", "")).strip()
+                first_res = row.get("首次预约")
+                if not code or pd.isna(first_res):
+                    continue
+                date_str = str(first_res)[:10]
+                if code not in _disclosure_cache:
+                    _disclosure_cache[code] = date_str
+            print(f"[disclosure] 已缓存 {len(_disclosure_cache)} 只股票的 {period} 披露日期")
+            return  # 成功拉取第一个报告期即可
+        except Exception as exc:
+            print(f"[disclosure] {period} 拉取失败: {exc}", file=sys.stderr)
+            continue
+
+
+def get_next_report_date(code: str) -> str:
+    """获取个股下次财报预约披露日期（从预拉取的缓存中查找）。
+
+    返回格式: YYYY-MM-DD 或空字符串
+    """
+    return _disclosure_cache.get(code, "")
 
 
 def fetch_history(
@@ -117,12 +212,17 @@ def fetch_history(
     if sleep_seconds > 0:
         time.sleep(sleep_seconds)
 
-    history = ak.stock_zh_a_daily(
-        symbol=market_symbol(symbol),
-        start_date=date_yyyymmdd(520),
-        end_date=today_yyyymmdd(),
-        adjust="qfq",
-    )
+    try:
+        history = ak.stock_zh_a_daily(
+            symbol=market_symbol(symbol),
+            start_date=date_yyyymmdd(520),
+            end_date=today_yyyymmdd(),
+            adjust="qfq",
+        )
+    except KeyError as e:
+        # akshare 内部 bug：无效代码或新浪限流返回空 DataFrame 时访问 "date" 列报错
+        print(f"[fetch_history] {symbol}: akshare KeyError {e}", file=sys.stderr)
+        return pd.DataFrame()
 
     if history.empty or len(history) < min_history_days:
         return pd.DataFrame()
@@ -138,6 +238,65 @@ def fetch_history(
         save_cached(symbol, result)
 
     return result
+
+
+def get_sub_industry_map(codes: list[str]) -> dict[str, str]:
+    """获取个股的三级行业（细分行业）分类。
+
+    通过东财 datacenter 接口获取 BOARD_TYPE="行业" 的分类。
+    东财返回数据中同一股票可能包含 一级/二级/三级 三条记录，
+    按 SECURITY_CODE 排序时三级记录在最后，因此覆盖写入即可保留最细分级。
+    返回: {code: 三级行业名称} 如 {"300373": "分立器件"}
+    """
+    sub_industry_map: dict[str, str] = {}
+    if not codes:
+        return sub_industry_map
+
+    try:
+        import requests as req
+
+        codes_set = set(codes)
+        url = "https://datacenter-web.eastmoney.com/api/data/v1/get"
+        page = 1
+        total_pages = 1
+        while page <= total_pages:
+            params = {
+                "sortColumns": "SECURITY_CODE",
+                "sortTypes": 1,
+                "pageSize": 500,
+                "pageNumber": page,
+                "reportName": "RPT_F10_CORETHEME_BOARDTYPE",
+                "columns": "SECURITY_CODE,SECURITY_NAME_ABBR,BOARD_NAME,BOARD_TYPE",
+                "filter": '(BOARD_TYPE="行业")',
+            }
+            try:
+                r = req.get(url, params=params, timeout=15)
+            except Exception:
+                time.sleep(0.5)
+                page += 1
+                continue
+            if r.status_code != 200:
+                page += 1
+                continue
+            data = r.json()
+            if not data.get("result") or not data["result"].get("data"):
+                break
+            if page == 1:
+                total_pages = data["result"].get("pages", 1)
+            for item in data["result"]["data"]:
+                code = item.get("SECURITY_CODE", "")
+                board_name = item.get("BOARD_NAME", "")
+                if code and board_name and code in codes_set:
+                    # 三级细分行业名称通常比一级/二级更长，取最长的
+                    if code not in sub_industry_map or len(board_name) > len(sub_industry_map[code]):
+                        sub_industry_map[code] = board_name
+            page += 1
+            time.sleep(0.1)
+
+    except Exception as exc:
+        print(f"WARN sub-industry fetch failed: {exc}", file=sys.stderr)
+
+    return sub_industry_map
 
 
 def get_industry_map() -> dict[str, str]:
@@ -195,9 +354,46 @@ def get_industry_map() -> dict[str, str]:
         except Exception as exc:
             print(f"WARN SZ fallback failed: {exc}", file=sys.stderr)
 
+    # 补充：Eastmoney 概念板块映射（独立存储，不覆盖行业）
+    concept_keywords = [
+        "航天", "航空", "军工", "国防", "芯片", "半导体", "光伏", "新能源",
+        "锂电", "储能", "人工智能", "机器人", "医药", "生物", "汽车",
+        "消费电子", "软件", "通信", "云计算", "数据", "网络安全",
+    ]
+    concept_map: dict[str, list[str]] = {}
+    try:
+        boards = ak.stock_board_concept_name_em()
+        board_col = "板块名称" if "板块名称" in boards.columns else boards.columns[1]
+        matched_boards = [
+            name for name in boards[board_col].dropna().astype(str).tolist()
+            if any(kw in name for kw in concept_keywords)
+        ]
+        concept_count = 0
+        for board_name in matched_boards:
+            try:
+                cons = ak.stock_board_concept_cons_em(symbol=board_name)
+                code_column = "代码" if "代码" in cons.columns else "股票代码"
+                for code in cons[code_column].astype(str).str.zfill(6):
+                    if code not in concept_map:
+                        concept_map[code] = []
+                    if board_name not in concept_map[code]:
+                        concept_map[code].append(board_name)
+                        concept_count += 1
+                time.sleep(0.02)
+            except Exception:
+                pass
+        if concept_count > 0:
+            print(f"概念板块映射: {len(concept_map)}只股票，共{concept_count}条关联")
+    except Exception as exc:
+        print(f"WARN concept board enrichment failed: {exc}", file=sys.stderr)
+
     try:
         cache_path.write_text(
-            json.dumps({"_date": now.strftime("%Y-%m-%d"), "map": industry_map}, ensure_ascii=False),
+            json.dumps({
+                "_date": now.strftime("%Y-%m-%d"),
+                "map": industry_map,
+                "concepts": concept_map,
+            }, ensure_ascii=False),
             encoding="utf-8",
         )
     except Exception:
@@ -206,19 +402,53 @@ def get_industry_map() -> dict[str, str]:
     return industry_map
 
 
+def get_concept_map() -> dict[str, list[str]]:
+    """Load concept map from cache (populated by get_industry_map)."""
+    cache_path = Path("industry_map_cache.json")
+    if not cache_path.exists():
+        return {}
+    try:
+        cached = json.loads(cache_path.read_text(encoding="utf-8"))
+        return cached.get("concepts", {})
+    except Exception:
+        return {}
+
+
 def next_report_date() -> dict[str, str]:
-    """Return next reporting period name and deadline date."""
+    """Return next reporting period name and deadline date range.
+    
+    财报披露时间范围：
+    - 一季报（1-3月）：4月1日 — 4月30日
+    - 中报（1-6月）：7月1日 — 8月31日
+    - 三季报（1-9月）：10月1日 — 10月31日
+    - 年报（全年）：次年1月1日 — 次年4月30日
+    """
     today = dt.date.today()
-    deadlines = [
-        ("一季报", dt.date(today.year, 4, 30)),
-        ("中报", dt.date(today.year, 8, 31)),
-        ("三季报", dt.date(today.year, 10, 31)),
-        ("年报", dt.date(today.year + 1, 4, 30)),
+    year = today.year
+    
+    # 定义财报披露时间范围
+    report_ranges = [
+        ("一季报", dt.date(year, 4, 1), dt.date(year, 4, 30)),    # Q1: 4/1-4/30
+        ("中报", dt.date(year, 7, 1), dt.date(year, 8, 31)),      # H1: 7/1-8/31
+        ("三季报", dt.date(year, 10, 1), dt.date(year, 10, 31)),  # Q3: 10/1-10/31
+        ("年报", dt.date(year + 1, 1, 1), dt.date(year + 1, 4, 30)),  # Annual: 1/1-4/30
     ]
-    for period, d in deadlines:
-        if d >= today:
-            return {"period": period, "deadline": d.strftime("%Y-%m-%d")}
-    return {"period": "年报", "deadline": deadlines[-1][1].strftime("%Y-%m-%d")}
+    
+    # 找到下一个需要披露的财报
+    for period, start, end in report_ranges:
+        # 当前处于披露期内或披露期尚未开始
+        if today <= end:
+            return {
+                "period": period, 
+                "deadline": f"{start.strftime('%m/%d')} — {end.strftime('%m/%d')}"
+            }
+    
+    # 如果所有期限都过了，返回下一年年报
+    next_year = year + 1
+    return {
+        "period": "年报", 
+        "deadline": f"{dt.date(next_year, 1, 1).strftime('%m/%d')} — {dt.date(next_year, 4, 30).strftime('%m/%d')}"
+    }
 
 
 def build_market_cap_cache() -> dict[str, float]:
@@ -356,14 +586,14 @@ def detect_cup_handle(data: pd.DataFrame) -> tuple[bool, dict]:
     bottom_idx = search_start + int(np.argmin(recent_low[search_start:-10]))
     bottom_price = float(recent_low[bottom_idx])
     cup_depth = (1 - bottom_price / peak_price) * 100
-    if not (8 <= cup_depth <= 40):
-        return False, {"reason": f"杯深{cup_depth:.0f}%不在8-40%"}
+    if not (10 <= cup_depth <= 40):
+        return False, {"reason": f"杯深{cup_depth:.0f}%不在10-40%"}
     rim_search = recent_high[bottom_idx + 10:]
     if len(rim_search) < 5:
         return False, {"reason": "无右杯沿"}
     rim_idx = bottom_idx + 10 + int(np.argmax(rim_search))
     rim_price = float(recent_high[rim_idx])
-    if rim_price < peak_price * 0.7:
+    if rim_price < peak_price * 0.75:
         return False, {"reason": "右杯沿回升不足"}
     handle_search = recent_high[rim_idx + 3:]
     if len(handle_search) < 3:
@@ -371,76 +601,141 @@ def detect_cup_handle(data: pd.DataFrame) -> tuple[bool, dict]:
     handle_low_idx = rim_idx + 3 + int(np.argmin(recent_low[rim_idx + 3:min(rim_idx + 30, len(recent_low))]))
     handle_low = float(recent_low[handle_low_idx])
     handle_depth = (1 - handle_low / rim_price) * 100 if rim_price > 0 else 0
+    # 柄部回撤不应超过杯深的50%（经典杯柄要求）
+    max_handle_depth = cup_depth * 0.5
     pre_peak_vol = np.mean(recent_vol[max(0, peak_idx-20):peak_idx+1])
-    cup_vol = np.mean(recent_vol[peak_idx:rim_idx+1])
-    vol_contract = cup_vol < pre_peak_vol * 1.2 and cup_vol > 0
+    # 杯底区域量能（后半段）应明显萎缩
+    cup_mid = (peak_idx + rim_idx) // 2
+    cup_bottom_vol = np.mean(recent_vol[cup_mid:rim_idx+1])
+    cup_top_vol = np.mean(recent_vol[peak_idx:cup_mid+1])
+    vol_contract = cup_bottom_vol < cup_top_vol * 0.85 and cup_bottom_vol > 0
     current_close = float(close[-1])
     current_vol = float(volume[-1])
     vol_ma20 = np.mean(volume[-20:])
     price_near_rim = current_close > rim_price * 0.9
+    # 柄部天数（确保非负）
+    handle_days = max(0, handle_low_idx - rim_idx - 3)
     pattern = (
         cup_depth >= 10 and cup_depth <= 40 and
         rim_price >= peak_price * 0.75 and
-        handle_depth >= 2 and handle_depth <= 20 and
+        handle_depth >= 2 and handle_depth <= max_handle_depth and
         handle_low >= bottom_price * 1.02 and
         vol_contract and price_near_rim
     )
     return pattern, {
-        "cup_valid": cup_depth >= 8 and cup_depth <= 40 and rim_price >= peak_price * 0.7,
+        "cup_valid": cup_depth >= 10 and cup_depth <= 40 and rim_price >= peak_price * 0.75,
         "cup_high": round(peak_price, 2),
         "cup_low": round(bottom_price, 2),
         "cup_depth_pct": round(cup_depth, 2),
         "cup_days": rim_idx - peak_idx,
         "right_rim_price": round(rim_price, 2),
-        "handle_valid": handle_depth >= 2 and handle_depth <= 20,
+        "handle_valid": handle_depth >= 2 and handle_depth <= max_handle_depth,
         "handle_high": round(rim_price, 2),
         "handle_low": round(handle_low, 2),
         "handle_depth_pct": round(handle_depth, 2),
-        "handle_days": handle_low_idx - rim_idx - 3,
+        "handle_days": handle_days,
         "volume_contracting": vol_contract,
         "price_breakout": current_close > rim_price,
         "volume_breakout": current_vol > vol_ma20 * 1.2,
         "near_rim": price_near_rim,
     }
 def detect_vcp(data: pd.DataFrame) -> tuple[bool, dict]:
-    """简化版VCP：近120日波动率收窄+量萎缩。"""
+    """VCP波动收缩形态检测：Mark Minervini定义的核心特征。
+
+    VCP必要条件：
+    1. 至少2-3次收缩（回调-回升循环）
+    2. 波动幅度逐步收缩（每次收缩幅度递减）
+    3. 低点抬高或持平
+    4. 量能递减
+    5. 价格接近阻力位（准备突破）
+    """
     if len(data) < 120:
         return False, {"error": "数据不足"}
+
     recent = data.tail(120)
     close = recent["close"].values
     high = recent["high"].values
     low = recent["low"].values
     volume = recent["volume"].values
+
     if "ma200" not in data.columns:
         data["ma200"] = data["close"].rolling(200).mean()
     ma200_now = float(data["ma200"].iloc[-1])
+    ma20_now = float(data["close"].tail(20).mean())
+
+    # 计算波动幅度函数
     def amp(arr):
         return (np.max(arr) / np.min(arr) - 1) * 100 if np.min(arr) > 0 else 100
-    a1, a2, a3 = amp(close[-20:]), amp(close[-40:-20]), amp(close[-60:-40])
-    tight = a1 < max(a2, a3) * 0.9 if max(a2, a3) > 0 and a1 < 25 else False
+
+    # 分段计算波动幅度（从近到远）
+    a1 = amp(close[-20:])      # 最近20日
+    a2 = amp(close[-40:-20])   # 40-20日前
+    a3 = amp(close[-60:-40])   # 60-40日前
+    a4 = amp(close[-80:-60])   # 80-60日前（可选）
+
+    # 关键改进：检查波动是否从最近段开始逐步收缩（金字塔式）
+    # VCP要求：a1 < a2 < a3（最近波动最小，越早期波动越大），必须从a1开始连续
+    ranges = [a1, a2, a3, a4]
+    consecutive_contractions = 0
+    for i in range(len(ranges) - 1):
+        if ranges[i] < ranges[i+1] * 0.85:  # 收缩至少15%
+            consecutive_contractions += 1
+        else:
+            break  # 从最近段开始，一旦中断则停止计数
+
+    # 至少要有2次从最近段开始的连续收缩
+    has_contractions = consecutive_contractions >= 2
+
+    # 宽松匹配（作为补充）
+    tight_loose = a1 < max(a2, a3) * 0.9 if max(a2, a3) > 0 and a1 < 25 else False
+
+    # 量能萎缩检测
     v20 = np.mean(volume[-20:])
     v60 = np.mean(volume[-80:-20])
     vol_dry = v20 < v60 * 0.95
+
+    # 检查低点抬高特征
+    lows_20 = low[-20:]
+    lows_40 = low[-40:-20]
+    lows_60 = low[-60:-40]
+    low_trend_up = np.min(lows_20) >= np.min(lows_40) * 0.98  # 最近低点不低于前期低点的2%
+
+    # 价格突破判定
     current_close = float(close[-1])
     current_vol = float(volume[-1])
     high_20 = float(np.max(high[-20:]))
+
+    # 突破条件：接近或超过近20日高点
     price_break = current_close > high_20 * 0.95
     vol_break = current_vol > np.mean(volume[-20:]) * 1.2
+
+    # 上升趋势判定
     up = current_close > ma200_now and float(data["ma200"].iloc[-1]) > float(data["ma200"].iloc[-31])
-    pattern = up and (tight or vol_dry) and price_break
+
+    # 最终判定：需要满足核心VCP特征
+    # 条件1：上升趋势
+    # 条件2：连续收缩 OR (宽松收缩+量能萎缩+低点抬高)
+    # 条件3：价格接近突破点
+    pattern = up and (has_contractions or (tight_loose and vol_dry and low_trend_up)) and price_break
+
+    # 收缩次数统计
+    contraction_count = consecutive_contractions if has_contractions else sum(1 for v in [a1, a2, a3] if v > 3)
+
     return pattern, {
         "vcp_valid": pattern,
         "vcp_status": "已突破" if (price_break and vol_break) else "构筑中",
-        "vcp_contractions": sum(1 for v in [a1, a2, a3] if v > 3),
-        "vcp_tighten": tight,
+        "vcp_contractions": contraction_count,
+        "vcp_tighten": has_contractions,  # 改进：标记是否有金字塔收缩
         "vcp_vol_shrink": vol_dry,
         "high_trend_ok": up,
         "vcp_tight_range": round(a1, 2),
         "vcp_vol_dry_up": vol_dry,
         "vcp_breakout": price_break and vol_break,
+        "vcp_low_trend_up": low_trend_up,  # 新增：低点抬高特征
         "vcp_ranges": [round(a1, 2), round(a2, 2), round(a3, 2)],
         "vcp_vols": [round(v20, 0), round(v60, 0)],
         "vcp_resistance": round(high_20, 2),
+        "vcp_reason": f"连续收缩:{consecutive_contractions}次" if has_contractions else f"宽松匹配(波动{a1:.1f}%<{max(a2,a3):.1f}%+低点抬高)" if tight_loose and low_trend_up else "不满足收缩条件",
     }
 
 
@@ -469,7 +764,7 @@ def calc_stage2_core_conditions(data: pd.DataFrame, rps_120: float | None = None
         "ma200_rising_1m": bool(ma200 > float(ma200_20d_ago)),
         "above_52w_low_30pct": bool(pct_above_low >= 30),
         "within_25pct_52w_high": bool(pct_below_high >= -25),
-        "rps_120_strong": bool(rps_120 is not None and rps_120 >= 80),
+        "rps_120_strong": bool(rps_120 is not None and rps_120 >= 70),
     }
     count = sum(1 for v in conditions.values() if v)
     return count, conditions
@@ -666,6 +961,7 @@ def evaluate_stage2(code: str, name: str, industry: str, history: pd.DataFrame,
     fin_rev = []
     fin_profit = []
     fin_margin = []
+    fin_latest_report_date = ""
     if financial_cache is not None:
         try:
             fin = check_financial_acceleration(code, financial_cache)
@@ -674,33 +970,39 @@ def evaluate_stage2(code: str, name: str, industry: str, history: pd.DataFrame,
             fin_rev = fin["rev_growth"]
             fin_profit = fin["profit_growth"]
             fin_margin = fin["profit_margin"]
+            fin_latest_report_date = fin.get("latest_report_date", "")
             score += fin_score
         except Exception:
             pass
+
+    # 获取个股下次财报预约披露日期
+    next_report_date_str = get_next_report_date(code)
 
     is_stage2 = core_count == 5
 
     # 杯柄/VCP合并评分: 0=无, 1=满足一项, 2=两项都满足
     cup_vcp_score = (1 if cup_handle_pattern else 0) + (1 if vcp_pattern else 0)
 
-    # 提取 ROE（净资产收益率）
+    # 提取 ROE（净资产收益率）- 仅对 Stage2 候选股查询，避免无效 HTTP 请求
     roe = None
-    try:
-        fin_abs = ak.stock_financial_abstract(symbol=code)
-        if not fin_abs.empty:
-            roe_row = fin_abs[fin_abs["指标"] == "净资产收益率_平均" if "净资产收益率_平均" in fin_abs["指标"].values else "净资产收益率(ROE)"]
-            # Try 净资产收益率_平均 first, fallback to 净资产收益率(ROE)
-            if roe_row.empty:
-                roe_row = fin_abs[fin_abs["指标"] == "净资产收益率(ROE)"]
-            if not roe_row.empty:
-                date_cols = [c for c in fin_abs.columns if str(c).isdigit() and len(str(c)) == 8]
-                if date_cols:
-                    latest_col = sorted(date_cols)[-1]
-                    val = roe_row.iloc[0][latest_col]
-                    if pd.notna(val):
-                        roe = round(float(val), 2)
-    except Exception:
-        pass
+    if is_stage2:
+        try:
+            fin_abs = ak.stock_financial_abstract(symbol=code)
+            if not fin_abs.empty:
+                roe_row = fin_abs[fin_abs["指标"] == "净资产收益率_平均" if "净资产收益率_平均" in fin_abs["指标"].values else "净资产收益率(ROE)"]
+                if roe_row.empty:
+                    roe_row = fin_abs[fin_abs["指标"] == "净资产收益率(ROE)"]
+                if not roe_row.empty:
+                    date_cols = [c for c in fin_abs.columns if str(c).isdigit() and len(str(c)) == 8]
+                    if date_cols:
+                        # 优先取年度数据（12月31日），若无则取最新季度
+                        annual_cols = [c for c in date_cols if str(c).endswith("1231")]
+                        target_col = sorted(annual_cols)[-1] if annual_cols else sorted(date_cols)[-1]
+                        val = roe_row.iloc[0][target_col]
+                        if pd.notna(val):
+                            roe = round(float(val), 2)
+        except Exception:
+            pass
 
     reasons = []
     if conditions["close_gt_ma200"]:
@@ -749,8 +1051,7 @@ def evaluate_stage2(code: str, name: str, industry: str, history: pd.DataFrame,
         "financial_score": fin_score,
         "market_cap_cny": get_market_cap(code, close, market_caps) if market_caps else 0,
         "pe_ttm": calculate_pe_ttm(code, close, financial_cache) if financial_cache else None,
-        "next_report_period": next_report_date()["period"],
-        "next_report_deadline": next_report_date()["deadline"],
+        "next_report_date": next_report_date_str,
         "rev_growth": json.dumps(fin_rev[-3:] if len(fin_rev) >= 3 else fin_rev, ensure_ascii=False) if fin_rev else "",
         "profit_growth": json.dumps(fin_profit[-3:] if len(fin_profit) >= 3 else fin_profit, ensure_ascii=False) if fin_profit else "",
         "profit_margin": json.dumps(fin_margin[-3:] if len(fin_margin) >= 3 else fin_margin, ensure_ascii=False) if fin_margin else "",
@@ -777,14 +1078,24 @@ def scan_one(
     financial_cache: dict | None = None,
     market_caps: dict[str, float] | None = None,
     rps_map: dict[str, float] | None = None,
+    concept_map: dict[str, list[str]] | None = None,
+    sub_industry_map: dict[str, str] | None = None,
 ) -> dict | None:
     code = row["代码"]
     name = row["名称"]
     history = fetch_history(code, args.min_history_days, args.sleep_seconds)
     rps_120 = rps_map.get(code) if rps_map else None
-    return analyze_stage2(code, name, industry_map.get(code, "Unknown"), history,
+    result = analyze_stage2(code, name, industry_map.get(code, "Unknown"), history,
                           financial_cache=financial_cache, market_caps=market_caps,
                           rps_120=rps_120)
+    if result and sub_industry_map:
+        sub_ind = sub_industry_map.get(code)
+        if sub_ind:
+            result["display_industry"] = sub_ind
+    if result and concept_map:
+        concepts = concept_map.get(code, [])
+        result["concepts"] = "/".join(concepts[:3]) if concepts else ""
+    return result
 
 
 def main() -> int:
@@ -793,8 +1104,27 @@ def main() -> int:
         print("WARN --workers is currently forced to 1 because AkShare daily data is not thread-safe.")
 
     pool = get_stock_pool(args.include_bj, args.limit, args.offset)
+    # 修复股票池中名称为空的行：优先从本地缓存补全，缓存无则用代码兜底
+    _name_fallback = {}
+    try:
+        _cache_file = Path(__file__).parent / "industry_classification_cache.json"
+        if _cache_file.exists():
+            _cache_data = json.loads(_cache_file.read_text(encoding="utf-8"))
+            _cache_stocks = _cache_data.get("stocks", {})
+            _name_fallback = {c: s.get("name", "") for c, s in _cache_stocks.items() if s.get("name", "")}
+    except Exception:
+        pass
+    for _idx, _row in pool.iterrows():
+        if pd.isna(_row["名称"]) or str(_row["名称"]).strip() == "":
+            _code = str(_row["代码"]).zfill(6)
+            pool.at[_idx, "名称"] = _name_fallback.get(_code, _code)
+    pool["名称"] = pool["名称"].astype(str).str.strip()
     industry_map = get_industry_map()
+    concept_map = get_concept_map()
     financial_cache = load_cache()
+
+    # 预拉取财报披露日期（一次请求全量，后续 O(1) 查找）
+    _prefetch_disclosure_cache()
     # market_caps 仅用于展示市值，批量扫描时不构建以节省时间
     market_caps = None
     print(
@@ -803,6 +1133,7 @@ def main() -> int:
     )
 
     # ── 批量计算 120 日 RPS ──
+    # 先收集所有股票的 120 日收益率，再计算百分位排名
     print("Calculating 120-day RPS for all stocks...")
     rps_returns: dict[str, float] = {}
     for index, row in pool.iterrows():
@@ -813,11 +1144,13 @@ def main() -> int:
     rps_map = calc_all_rps(rps_returns) if rps_returns else {}
     print(f"RPS calculated for {len(rps_map)} stocks")
 
+    # ── 主扫描（RPS 百分位已就绪，历史数据已在 daily_cache 中，无需重复请求）──
     matches: list[dict] = []
     for index, row in pool.iterrows():
         try:
             result = scan_one(row, industry_map, args, financial_cache=financial_cache,
-                              market_caps=market_caps, rps_map=rps_map)
+                              market_caps=market_caps, rps_map=rps_map,
+                              concept_map=concept_map)
             if result:
                 matches.append(result)
                 print(f"MATCH {result['code']} {result['name']} {result['industry']} score={result['score']}")
@@ -828,6 +1161,18 @@ def main() -> int:
             print(f"Progress: {index + 1}/{len(pool)}, matches={len(matches)}")
 
     save_cache(financial_cache)
+
+    # 对匹配的候选股批量获取细分行业（三级分类），写入 display_industry 字段
+    if matches:
+        print(f"Fetching sub-industry (3rd-level) for {len(matches)} candidates...")
+        match_codes = [m["code"] for m in matches]
+        sub_industry_map = get_sub_industry_map(match_codes)
+        for m in matches:
+            sub_ind = sub_industry_map.get(m["code"])
+            if sub_ind:
+                m["display_industry"] = sub_ind
+        print(f"Sub-industry mapped for {len(sub_industry_map)}/{len(matches)} candidates")
+
     result_df = pd.DataFrame(matches)
     if not result_df.empty:
         result_df = result_df.sort_values(["score", "amount_cny"], ascending=[False, False])
@@ -837,10 +1182,20 @@ def main() -> int:
     print(f"Saved {len(result_df)} SEPA Stage 2 candidates to {output}")
 
     # 输出全市场 RPS 缓存，供手动评估查询
+    # 分批模式下增量合并（读旧+合并去重），避免后一批覆盖前一批的 RPS
     rps_out = Path("rps_all.csv")
-    pd.DataFrame({"code": list(rps_map.keys()), "rps_120": list(rps_map.values())}).to_csv(
-        rps_out, index=False, encoding="utf-8")
-    print(f"Saved {len(rps_map)} RPS records to {rps_out}")
+    new_rps = pd.DataFrame({"code": list(rps_map.keys()), "rps_120": list(rps_map.values())})
+    if rps_out.exists():
+        try:
+            old_rps = pd.read_csv(rps_out, dtype={"code": str})
+            if not old_rps.empty:
+                new_rps = pd.concat([old_rps, new_rps], ignore_index=True)
+                new_rps = new_rps.drop_duplicates(subset=["code"], keep="last")
+        except Exception:
+            pass
+    new_rps["code"] = new_rps["code"].astype(str).str.zfill(6)
+    new_rps.to_csv(rps_out, index=False, encoding="utf-8")
+    print(f"Saved {len(new_rps)} RPS records to {rps_out}")
 
     return 0
 

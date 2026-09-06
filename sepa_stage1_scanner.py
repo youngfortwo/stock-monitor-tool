@@ -24,6 +24,7 @@ from sepa_stage2_scanner import (
     detect_transition,
     fetch_history,
     get_board,
+    get_concept_map,
     get_industry_map,
     get_market_cap,
     get_stock_pool,
@@ -109,6 +110,7 @@ def evaluate_stage1(code: str, name: str, industry: str, history: pd.DataFrame,
     fin_rev = []
     fin_profit = []
     fin_margin = []
+    fin_latest_report_date = ""
     if financial_cache is not None:
         try:
             fin = check_financial_acceleration(code, financial_cache)
@@ -117,6 +119,7 @@ def evaluate_stage1(code: str, name: str, industry: str, history: pd.DataFrame,
             fin_rev = fin["rev_growth"]
             fin_profit = fin["profit_growth"]
             fin_margin = fin["profit_margin"]
+            fin_latest_report_date = fin.get("latest_report_date", "")
         except Exception:
             pass
 
@@ -223,6 +226,7 @@ def evaluate_stage1(code: str, name: str, industry: str, history: pd.DataFrame,
         "transition_details": transition_info,
         "market_cap_cny": get_market_cap(code, close, market_caps) if market_caps else 0,
         "pe_ttm": calculate_pe_ttm(code, close, financial_cache) if financial_cache else None,
+        "latest_report_date": fin_latest_report_date,
         "next_report_period": next_report_date()["period"],
         "next_report_deadline": next_report_date()["deadline"],
         "rev_growth": json.dumps(fin_rev[-3:] if len(fin_rev) >= 3 else fin_rev, ensure_ascii=False) if fin_rev else "",
@@ -255,14 +259,19 @@ def scan_one(
     financial_cache: dict | None = None,
     market_caps: dict[str, float] | None = None,
     rps_map: dict[str, float] | None = None,
+    concept_map: dict[str, list[str]] | None = None,
 ) -> dict | None:
     code = row["代码"]
     name = row["名称"]
     history = fetch_history(code, args.min_history_days, args.sleep_seconds)
     rps_120 = rps_map.get(code) if rps_map else None
-    return analyze_stage1(code, name, industry_map.get(code, "Unknown"), history,
+    result = analyze_stage1(code, name, industry_map.get(code, "Unknown"), history,
                           financial_cache=financial_cache, market_caps=market_caps,
                           rps_120=rps_120)
+    if result and concept_map:
+        concepts = concept_map.get(code, [])
+        result["concepts"] = "/".join(concepts[:3]) if concepts else ""
+    return result
 
 
 def parse_args() -> argparse.Namespace:
@@ -284,6 +293,7 @@ def main() -> int:
 
     pool = get_stock_pool(args.include_bj, args.limit, args.offset)
     industry_map = get_industry_map()
+    concept_map = get_concept_map()
     financial_cache = load_cache()
     # market_caps 仅用于展示市值，批量扫描时不构建以节省时间
     market_caps = None
@@ -324,6 +334,9 @@ def main() -> int:
                                     financial_cache=financial_cache, market_caps=market_caps,
                                     rps_120=rps_120)
             if result:
+                if concept_map:
+                    concepts = concept_map.get(code, [])
+                    result["concepts"] = "/".join(concepts[:3]) if concepts else ""
                 matches.append(result)
                 label = result.get("label", "")
                 print(f"MATCH {result['code']} {result['name']} {result['industry']} score={result['score']} RPS={rps_120 or 0} {label}")

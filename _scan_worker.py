@@ -6,6 +6,8 @@ from pathlib import Path
 import pandas as pd
 
 HISTORY_MAX = 10
+# 单批扫描超时（秒）：200只×约3min/100只≈6min，留15min余量
+BATCH_TIMEOUT = 900
 
 
 def save_to_history(output: str, scan_type: str) -> None:
@@ -129,9 +131,21 @@ def main():
             "--output", f"batch_results/{prefix}{offset}.csv",
             "--sleep-seconds", "0.15",
         ]
-        proc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
-        if proc.returncode != 0:
-            print(f"Batch {batch_no + 1} failed: {proc.stderr[:200]}", file=sys.stderr)
+        try:
+            proc = subprocess.run(
+                cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                text=True, timeout=BATCH_TIMEOUT,
+            )
+            if proc.returncode != 0:
+                print(f"Batch {batch_no + 1} failed: {proc.stderr[:200]}", file=sys.stderr)
+        except subprocess.TimeoutExpired:
+            print(f"Batch {batch_no + 1} timed out after {BATCH_TIMEOUT}s, skipping...", file=sys.stderr)
+            # 清理可能残留的半成品文件，避免 merge 读到脏数据
+            try:
+                os.unlink(f"batch_results/{prefix}{offset}.csv")
+            except FileNotFoundError:
+                pass
+            write_progress(batch_no + 1, message=f"第 {batch_no + 1}/{total_batches} 批超时（>{BATCH_TIMEOUT}s），已跳过")
 
         # Merge incrementally
         count = merge_and_write(f"{prefix}*.csv", output, sort_cols)

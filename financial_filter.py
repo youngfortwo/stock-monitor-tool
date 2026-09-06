@@ -130,6 +130,12 @@ def check_financial_acceleration(code: str, cache: dict | None = None) -> dict:
             if latest > prev:
                 score += 3
 
+    # 提取最近报表报告期（如 "2025-03-31" 表示一季报）
+    latest_report_date = ""
+    next_report_deadline = ""
+    if "日期" in df.columns and len(df) > 0:
+        latest_report_date = str(df.iloc[-1]["日期"])[:10]  # 取最后一条的日期，格式 YYYY-MM-DD
+
     financial_pass = score >= 8
     return {
         "financial_pass": financial_pass,
@@ -137,6 +143,7 @@ def check_financial_acceleration(code: str, cache: dict | None = None) -> dict:
         "profit_growth": profit_growth_vals,
         "profit_margin": margin_vals,
         "financial_score": score,
+        "latest_report_date": latest_report_date,
     }
 
 
