@@ -28,15 +28,31 @@ def _sqlite_type(series: pd.Series) -> str:
 
 
 def save_candidates(df: pd.DataFrame, db_path: str | Path, scan_date: str) -> int:
-    """写入一批候选股（同 scan_date + code 覆盖），返回写入行数。"""
-    if df is None or df.empty:
+    """写入一批候选股（同 scan_date 整日快照替换），返回写入行数。
+
+    同一天重跑时先清空该日旧行、再整批写入（同一事务，WAL 下读取方不会看到
+    半截状态）：仅 INSERT OR REPLACE 会残留已落选的旧行——同日先后两次扫描
+    （如开机一次、晚间一次）的数据会混在同一 scan_date 下，出现价格日期
+    不一致的"僵尸行"。空 DataFrame 表示"今日无候选"，同样清空该日。
+    """
+    if df is None:
         return 0
+    if not df.empty and "code" not in df.columns:
+        return 0  # 结构异常，不动库里已有数据
     data = df.copy()
-    data["code"] = data["code"].astype(str).str.zfill(6)
+    if not data.empty:
+        data["code"] = data["code"].astype(str).str.zfill(6)
     data.insert(0, "scan_date", str(scan_date))
 
     cols = list(data.columns)
     with _connect(db_path) as conn:
+        # 表已存在：整日替换（DELETE 与后续 INSERT 同事务提交）
+        if conn.execute(
+            f"SELECT 1 FROM sqlite_master WHERE type='table' AND name='{TABLE}'"
+        ).fetchone():
+            conn.execute(f'DELETE FROM {TABLE} WHERE scan_date = ?', (str(scan_date),))
+        if data.empty:
+            return 0
         conn.execute(
             f'CREATE TABLE IF NOT EXISTS {TABLE} ('
             + ", ".join(

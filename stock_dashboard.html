@@ -1867,6 +1867,15 @@ async function loadFromScanner() {
     });
     // 行业/概念映射（与本地 CSV 加载逻辑一致）
     rows.forEach(r => {
+      // 布尔字段规范化：扫描机 SQLite 把 bool 存为 REAL，返回 "1.0"/"0.0"，
+      // 而本地 CSV 链路是 "True"/"False" —— 统一转成 "True"/"False"，
+      // 否则渲染（=== "True"）与筛选全部失效，业绩列会全空
+      const _asBool = (v) => {
+        const s = String(v ?? "").toLowerCase();
+        return (s === "true" || s === "1" || s === "1.0") ? "True" : "False";
+      };
+      if (r.financial_pass != null) r.financial_pass = _asBool(r.financial_pass);
+      if (r.is_stage2 != null) r.is_stage2 = _asBool(r.is_stage2);
       if (!r.display_industry) {
         const disp = _industryMap && getDisplayIndustry(r.code);
         if (disp) r.display_industry = disp;
