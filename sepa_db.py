@@ -27,7 +27,7 @@ def _sqlite_type(series: pd.Series) -> str:
     return "REAL" if pd.api.types.is_numeric_dtype(series) else "TEXT"
 
 
-def save_candidates(df: pd.DataFrame, db_path: str | Path, scan_date: str) -> int:
+def save_candidates(df: pd.DataFrame, db_path: str | Path, scan_date: str, table: str = "stage2_candidates") -> int:
     """写入一批候选股（同 scan_date 整日快照替换），返回写入行数。
 
     同一天重跑时先清空该日旧行、再整批写入（同一事务，WAL 下读取方不会看到
@@ -48,13 +48,13 @@ def save_candidates(df: pd.DataFrame, db_path: str | Path, scan_date: str) -> in
     with _connect(db_path) as conn:
         # 表已存在：整日替换（DELETE 与后续 INSERT 同事务提交）
         if conn.execute(
-            f"SELECT 1 FROM sqlite_master WHERE type='table' AND name='{TABLE}'"
+            f"SELECT 1 FROM sqlite_master WHERE type='table' AND name='{table}'"
         ).fetchone():
-            conn.execute(f'DELETE FROM {TABLE} WHERE scan_date = ?', (str(scan_date),))
+            conn.execute(f'DELETE FROM {table} WHERE scan_date = ?', (str(scan_date),))
         if data.empty:
             return 0
         conn.execute(
-            f'CREATE TABLE IF NOT EXISTS {TABLE} ('
+            f'CREATE TABLE IF NOT EXISTS {table} ('
             + ", ".join(
                 f'"{c}" ' + ("TEXT NOT NULL" if c in ("scan_date", "code") else _sqlite_type(data[c]))
                 for c in cols
@@ -62,21 +62,21 @@ def save_candidates(df: pd.DataFrame, db_path: str | Path, scan_date: str) -> in
             + ', PRIMARY KEY ("scan_date", "code"))'
         )
         # scanner 未来新增列：对已有表补齐（ALTER ADD 默认 TEXT，SQLite 动态类型不影响写入）
-        existing = {r[1] for r in conn.execute(f"PRAGMA table_info({TABLE})")}
+        existing = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
         for c in cols:
             if c not in existing:
-                conn.execute(f'ALTER TABLE {TABLE} ADD COLUMN "{c}" TEXT')
+                conn.execute(f'ALTER TABLE {table} ADD COLUMN "{c}" TEXT')
 
         placeholders = ", ".join(["?"] * len(cols))
         col_names = ", ".join(f'"{c}"' for c in cols)
         conn.executemany(
-            f'INSERT OR REPLACE INTO {TABLE} ({col_names}) VALUES ({placeholders})',
+            f'INSERT OR REPLACE INTO {table} ({col_names}) VALUES ({placeholders})',
             data.where(pd.notna(data), None).values.tolist(),
         )
     return len(data)
 
 
-def load_candidates(db_path: str | Path, scan_date: str | None = None) -> pd.DataFrame:
+def load_candidates(db_path: str | Path, scan_date: str | None = None, table: str = "stage2_candidates") -> pd.DataFrame:
     """读取候选股。scan_date=None 时返回最新一个扫描日的数据。"""
     path = Path(db_path)
     if not path.exists():
@@ -84,13 +84,13 @@ def load_candidates(db_path: str | Path, scan_date: str | None = None) -> pd.Dat
     with _connect(path) as conn:
         if scan_date is None:
             row = conn.execute(
-                f"SELECT MAX(scan_date) FROM {TABLE}"
+                f"SELECT MAX(scan_date) FROM {table}"
             ).fetchone()
             if not row or not row[0]:
                 return pd.DataFrame()
             scan_date = row[0]
         df = pd.read_sql_query(
-            f'SELECT * FROM {TABLE} WHERE scan_date = ? ORDER BY CAST(score AS REAL) DESC',
+            f'SELECT * FROM {table} WHERE scan_date = ? ORDER BY CAST(score AS REAL) DESC',
             conn, params=(scan_date,),
         )
     if not df.empty and "code" in df.columns:
@@ -98,13 +98,13 @@ def load_candidates(db_path: str | Path, scan_date: str | None = None) -> pd.Dat
     return df
 
 
-def load_history(db_path: str | Path, code: str | None = None, days: int = 60) -> pd.DataFrame:
+def load_history(db_path: str | Path, code: str | None = None, days: int = 60, table: str = "stage2_candidates") -> pd.DataFrame:
     """读取近 N 天历史（可选按代码过滤），用于连续入选等分析。"""
     path = Path(db_path)
     if not path.exists():
         return pd.DataFrame()
     sql = (
-        f"SELECT * FROM {TABLE} WHERE scan_date >= date('now', ?)"
+        f"SELECT * FROM {table} WHERE scan_date >= date('now', ?)"
     )
     params: list = [f"-{int(days)} days"]
     if code:
@@ -114,11 +114,11 @@ def load_history(db_path: str | Path, code: str | None = None, days: int = 60) -
         return pd.read_sql_query(sql, conn, params=params)
 
 
-def available_dates(db_path: str | Path) -> list[str]:
+def available_dates(db_path: str | Path, table: str = "stage2_candidates") -> list[str]:
     """返回所有扫描日期（升序）。"""
     path = Path(db_path)
     if not path.exists():
         return []
     with _connect(path) as conn:
-        rows = conn.execute(f"SELECT DISTINCT scan_date FROM {TABLE} ORDER BY scan_date").fetchall()
+        rows = conn.execute(f"SELECT DISTINCT scan_date FROM {table} ORDER BY scan_date").fetchall()
     return [r[0] for r in rows]

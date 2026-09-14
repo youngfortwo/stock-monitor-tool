@@ -740,6 +740,390 @@ def fetch_macro_data(force_refresh: bool = False) -> dict:
     return result
 
 
+# ── CPI/PPI 数据（中国 / 美国）──
+_CPI_PPI_CACHE = None
+_CPI_PPI_CACHE_TS = 0.0
+
+# 2026 年国家统计局 CPI/PPI 发布日程表（每月发布日，09:30 发布，来源：国家统计局）
+_CN_CPI_PPI_RELEASE_2026 = [
+    (2026, 1, 9), (2026, 2, 11), (2026, 3, 9), (2026, 4, 10),
+    (2026, 5, 11), (2026, 6, 10), (2026, 7, 9), (2026, 8, 9),
+    (2026, 9, 9), (2026, 10, 14), (2026, 11, 9), (2026, 12, 9),
+]
+
+
+def _next_china_cpi_ppi_release() -> str:
+    """中国 CPI/PPI 下一次公布日期（返回 'YYYY-MM-DD'，无则空串）。"""
+    import datetime as _dt
+    today = _dt.date.today()
+    for y, m, d in _CN_CPI_PPI_RELEASE_2026:
+        release = _dt.date(y, m, d)
+        if release > today:
+            return release.strftime("%Y-%m-%d")
+    return ""
+
+
+def _fetch_em_usa_indicator(session, indicator_id: str, page_size: int = 5) -> list:
+    """查询东财美国经济指标（RPT_ECONOMICVALUE_USA），按 REPORT_DATE 降序返回原始行。"""
+    url = "https://datacenter-web.eastmoney.com/api/data/v1/get"
+    params = {
+        "reportName": "RPT_ECONOMICVALUE_USA",
+        "columns": "ALL",
+        "filter": f'(INDICATOR_ID="{indicator_id}")',
+        "sortColumns": "REPORT_DATE",
+        "sortTypes": "-1",
+        "pageSize": str(page_size),
+        "source": "WEB",
+        "client": "WEB",
+    }
+    r = session.get(url, params=params, timeout=20)
+    return r.json().get("result", {}).get("data", [])
+
+
+def _fetch_fred_index(session, series_id: str) -> dict:
+    """从 FRED 获取定基指数月度序列，返回 {YYYY-MM: 指数值}。
+
+    series_id 示例：CPIAUCSL（美国 CPI 全部城市消费者指数）、PPIACO（美国 PPI 全部商品）。
+    """
+    r = session.get(f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}", timeout=20)
+    lines = r.text.strip().splitlines()
+    data: dict[str, float] = {}
+    for line in lines[1:]:
+        parts = line.split(",")
+        if len(parts) < 2:
+            continue
+        d = parts[0][:7]
+        try:
+            v = float(parts[1])
+        except (ValueError, TypeError):
+            continue
+        if v == v:  # 非 NaN
+            data[d] = v
+    return data
+
+
+def fetch_cpi_ppi(force_refresh: bool = False) -> dict:
+    """获取中美两国最近 CPI/PPI 指数值及下一次公布时间。
+
+    返回（指数值，非同比/环比）:
+        china: {cpi: {month, value}, ppi: {month, value}, next_release}
+        usa:   {cpi: {month, value, publish}, ppi: {month, value, publish},
+                next_release_cpi, next_release_ppi}
+    """
+    global _CPI_PPI_CACHE, _CPI_PPI_CACHE_TS
+    now = time.time()
+    if not force_refresh and _CPI_PPI_CACHE is not None and (now - _CPI_PPI_CACHE_TS) < 3600:
+        return _CPI_PPI_CACHE
+
+    def _num(v):
+        if v is None:
+            return None
+        try:
+            x = float(v)
+        except (ValueError, TypeError):
+            return None
+        if x != x:  # NaN
+            return None
+        return round(x, 1)
+
+    def _month(dt_str):
+        s = str(dt_str or "").strip()
+        if "-" in s:
+            parts = s[:7].split("-")
+            if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+                return f"{parts[0]}年{int(parts[1]):02d}月"
+        return s
+
+    result = {
+        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "china": {"cpi": {}, "ppi": {}, "next_release": _next_china_cpi_ppi_release()},
+        "usa": {"cpi": {}, "ppi": {}, "next_release_cpi": "", "next_release_ppi": ""},
+    }
+
+    # ── 中国：东财 RPT_ECONOMY_CPI / RPT_ECONOMY_PPI（"当月"字段 = 上年同月=100 指数）──
+    try:
+        cpi = ak.macro_china_cpi()
+        if cpi is not None and not cpi.empty:
+            row = cpi.iloc[0]
+            result["china"]["cpi"] = {
+                "month": str(row["月份"]).replace("份", ""),
+                "value": _num(row.get("全国-当月")),
+            }
+    except Exception:
+        pass
+    try:
+        ppi = ak.macro_china_ppi()
+        if ppi is not None and not ppi.empty:
+            row = ppi.iloc[0]
+            result["china"]["ppi"] = {
+                "month": str(row["月份"]).replace("份", ""),
+                "value": _num(row.get("当月")),
+            }
+    except Exception:
+        pass
+
+    # ── 美国：FRED 定基指数 + 东财公布日期（直连，绕过代理）──
+    try:
+        import requests as _req
+        session = _req.Session()
+        session.trust_env = False
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+            "Referer": "https://data.eastmoney.com/",
+        })
+
+        cpi_idx = _fetch_fred_index(session, "CPIAUCSL")
+        ppi_idx = _fetch_fred_index(session, "PPIACO")
+
+        def _parse(rows):
+            latest = None
+            next_rel = ""
+            for r in rows:
+                val = r.get("VALUE")
+                if val is None or (isinstance(val, float) and val != val):  # 尚未公布
+                    pub = str(r.get("PUBLISH_DATE") or "")[:10]
+                    if pub and not next_rel:
+                        next_rel = pub
+                elif latest is None:
+                    latest = r
+            return latest, next_rel
+
+        # 下次公布时间沿用东财同比/环比接口的发布日期
+        lc, nc = _parse(_fetch_em_usa_indicator(session, "EMG00000733"))
+        lp, np_ = _parse(_fetch_em_usa_indicator(session, "EMG00177897"))
+
+        if cpi_idx:
+            latest_month = max(cpi_idx.keys())
+            result["usa"]["cpi"] = {
+                "month": _month(latest_month + "-01"),
+                "value": round(cpi_idx[latest_month], 1),
+                "publish": str(lc.get("PUBLISH_DATE") or "")[:10] if lc is not None else "",
+            }
+        if ppi_idx:
+            latest_month = max(ppi_idx.keys())
+            result["usa"]["ppi"] = {
+                "month": _month(latest_month + "-01"),
+                "value": round(ppi_idx[latest_month], 1),
+                "publish": str(lp.get("PUBLISH_DATE") or "")[:10] if lp is not None else "",
+            }
+        result["usa"]["next_release_cpi"] = nc
+        result["usa"]["next_release_ppi"] = np_
+    except Exception:
+        pass
+
+    _CPI_PPI_CACHE = result
+    _CPI_PPI_CACHE_TS = now
+    return result
+
+
+_CPI_PPI_HISTORY_CACHE = None
+_CPI_PPI_HISTORY_CACHE_TS = 0.0
+
+
+def _cn_month_to_ym(s: str) -> str:
+    """'2026年08月份' -> '2026-08'。"""
+    s = str(s or "").strip()
+    if "年" in s and "月" in s:
+        y = s.split("年")[0]
+        m = s.split("年")[1].split("月")[0]
+        try:
+            return f"{int(y)}-{int(m):02d}"
+        except ValueError:
+            return s
+    return s
+
+
+def fetch_cpi_ppi_history(force_refresh: bool = False) -> dict:
+    """获取中美两国近 10 年 CPI/PPI 指数月度序列（用于折线图）。
+
+    返回（指数值，非同比/环比）:
+        china: {dates: [...], cpi: [...], ppi: [...]}   （中国：上年同月=100 指数）
+        usa:   {dates: [...], cpi: [...], ppi: [...]}   （美国：BLS/FRED 定基指数）
+    """
+    global _CPI_PPI_HISTORY_CACHE, _CPI_PPI_HISTORY_CACHE_TS
+    now = time.time()
+    if not force_refresh and _CPI_PPI_HISTORY_CACHE is not None and (now - _CPI_PPI_HISTORY_CACHE_TS) < 3600:
+        return _CPI_PPI_HISTORY_CACHE
+
+    def _num(v):
+        if v is None:
+            return None
+        try:
+            x = float(v)
+        except (ValueError, TypeError):
+            return None
+        if x != x:  # NaN
+            return None
+        return round(x, 1)
+
+    result = {
+        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "china": {"dates": [], "cpi": [], "ppi": []},
+        "usa": {"dates": [], "cpi": [], "ppi": []},
+    }
+    N = 120  # 近 10 年（120 个月）
+
+    # ── 中国：东财 RPT_ECONOMY_CPI / PPI（"当月"字段 = 上年同月=100 指数）──
+    try:
+        cpi = ak.macro_china_cpi()
+        ppi = ak.macro_china_ppi()
+        cpi = cpi.head(N).iloc[::-1]
+        ppi = ppi.head(N).iloc[::-1]
+        result["china"]["dates"] = [_cn_month_to_ym(m) for m in cpi["月份"]]
+        result["china"]["cpi"] = [_num(x) for x in cpi["全国-当月"]]
+        ppi_map = {_cn_month_to_ym(m): _num(v) for m, v in zip(ppi["月份"], ppi["当月"])}
+        result["china"]["ppi"] = [ppi_map.get(d) for d in result["china"]["dates"]]
+    except Exception:
+        pass
+
+    # ── 美国：FRED 定基指数（CPIAUCSL / PPIACO）──
+    try:
+        import requests as _req
+        session = _req.Session()
+        session.trust_env = False
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        })
+
+        cpi_map = _fetch_fred_index(session, "CPIAUCSL")
+        ppi_map = _fetch_fred_index(session, "PPIACO")
+        if cpi_map:
+            dates = sorted(cpi_map.keys())[-N:]
+            result["usa"]["dates"] = dates
+            result["usa"]["cpi"] = [_num(cpi_map.get(d)) for d in dates]
+            result["usa"]["ppi"] = [_num(ppi_map.get(d)) for d in dates]
+    except Exception:
+        pass
+
+    _CPI_PPI_HISTORY_CACHE = result
+    _CPI_PPI_HISTORY_CACHE_TS = now
+    return result
+
+
+_GDP_HISTORY_CACHE = None
+_GDP_HISTORY_CACHE_TS = 0.0
+
+
+def _fetch_fred_quarterly(series_id: str) -> dict:
+    """从 FRED 获取季度序列，返回 {YYYY-QN: 值}（季度首日归到对应季度）。
+
+    FRED 在本机（Clash 代理环境下）用 requests + trust_env=False 会 ReadTimeout，
+    改用 curl --noproxy 直连（已验证稳定）。
+    """
+    import subprocess
+    text = ""
+    try:
+        proc = subprocess.run(
+            ["curl", "-s", "--noproxy", "*", "--max-time", "30",
+             f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"],
+            capture_output=True, text=True, timeout=35,
+        )
+        if proc.returncode == 0:
+            text = proc.stdout
+    except Exception:
+        return {}
+    if not text:
+        return {}
+    data: dict[str, float] = {}
+    for line in text.strip().splitlines()[1:]:
+        parts = line.split(",")
+        if len(parts) < 2:
+            continue
+        d = parts[0]  # 如 "2024-01-01"
+        try:
+            v = float(parts[1])
+        except (ValueError, TypeError):
+            continue
+        if v != v:  # 非 NaN
+            continue
+        try:
+            y, m, _ = d.split("-")
+            q = (int(m) - 1) // 3 + 1
+            data[f"{y}-Q{q}"] = v
+        except Exception:
+            continue
+    return data
+
+
+def fetch_gdp_history(force_refresh: bool = False) -> dict:
+    """获取中美两国近 10 年 GDP 季度序列（用于折线图）。
+
+    返回:
+        china: {dates: [...], gdp: [...]}   （季度标签 YYYY-QN + 当季 GDP，亿元）
+        usa:   {dates: [...], gdp: [...]}   （季度标签 YYYY-QN + GDP，十亿美元）
+    """
+    global _GDP_HISTORY_CACHE, _GDP_HISTORY_CACHE_TS
+    now = time.time()
+    if not force_refresh and _GDP_HISTORY_CACHE is not None and (now - _GDP_HISTORY_CACHE_TS) < 3600:
+        return _GDP_HISTORY_CACHE
+
+    import re
+
+    def _num(v):
+        if v is None:
+            return None
+        try:
+            x = float(v)
+        except (ValueError, TypeError):
+            return None
+        if x != x:  # NaN
+            return None
+        return round(x, 1)
+
+    result = {
+        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "china": {"dates": [], "gdp": []},
+        "usa": {"dates": [], "gdp": []},
+    }
+    N_Q = 40  # 近 10 年（40 个季度）
+
+    # ── 中国：东财/统计局季度 GDP（"国内生产总值-绝对值"为累计值，转成当季值）──
+    try:
+        gdp_df = ak.macro_china_gdp()
+        cum: dict[int, dict[int, float]] = {}  # {year: {q: 累计值}}
+        for _, row in gdp_df.iterrows():
+            qs = str(row["季度"])
+            m = re.match(r"(\d{4})年第1(?:-(\d))?季度", qs)
+            if not m:
+                continue
+            year = int(m.group(1))
+            q = int(m.group(2)) if m.group(2) else 1
+            try:
+                cum.setdefault(year, {})[q] = float(row["国内生产总值-绝对值"])
+            except (ValueError, TypeError):
+                continue
+        q_vals: list[tuple[str, float | None]] = []
+        for year in sorted(cum.keys()):
+            qs = cum[year]
+            for q in range(1, 5):
+                if q not in qs:
+                    continue
+                if q == 1:
+                    qv = qs[1]
+                else:
+                    prev = qs.get(q - 1)
+                    qv = (qs[q] - prev) if prev is not None else None
+                q_vals.append((f"{year}-Q{q}", qv))
+        q_vals = q_vals[-N_Q:]
+        result["china"]["dates"] = [q for q, _ in q_vals]
+        result["china"]["gdp"] = [_num(v) for _, v in q_vals]
+    except Exception as exc:
+        print(f"[gdp] 中国 GDP 获取失败: {exc}", file=sys.stderr)
+
+    # ── 美国：FRED 名义 GDP（GDP 系列，十亿美元，季度年化率）──
+    try:
+        gdp_map = _fetch_fred_quarterly("GDP")
+        if gdp_map:
+            dates = sorted(gdp_map.keys())[-N_Q:]
+            result["usa"]["dates"] = dates
+            result["usa"]["gdp"] = [_num(gdp_map.get(d)) for d in dates]
+    except Exception as exc:
+        print(f"[gdp] 美国 GDP 获取失败: {exc}", file=sys.stderr)
+
+    _GDP_HISTORY_CACHE = result
+    _GDP_HISTORY_CACHE_TS = now
+    return result
+
 
 from sepa_stage2_scanner import evaluate_stage2, fetch_history, load_industry_overrides, calc_all_rps
 from sepa_stage1_scanner import evaluate_stage1
@@ -888,6 +1272,33 @@ _industry_rank_cache: dict = {}
 # 股票整体分析缓存（按天缓存：全市场约5500只，单次拉取约2秒）
 _stock_overview_cache: dict = {}
 
+# 个股收藏列表（本地 JSON 持久化，多线程读写需加锁）
+_WATCHLIST_FILE = "watchlist.json"
+_watchlist_lock = threading.Lock()
+
+
+def _load_watchlist() -> dict:
+    """读取收藏列表 {code: {name, note, added_at}}。"""
+    try:
+        if os.path.exists(_WATCHLIST_FILE):
+            with open(_WATCHLIST_FILE, encoding="utf-8") as f:
+                data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except Exception:
+        pass
+    return {}
+
+
+def _save_watchlist(data: dict) -> None:
+    """原子写入收藏列表（临时文件 + os.replace）。"""
+    try:
+        tmp = _WATCHLIST_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, _WATCHLIST_FILE)
+    except Exception as e:
+        print(f"[watchlist] 保存失败: {e}", file=sys.stderr)
+
 
 def _latest_trading_date() -> str:
     """返回最近的 A 股交易日（YYYY-MM-DD）。
@@ -958,28 +1369,6 @@ def _save_industry_rank_snapshot(date_str: str, boards: list[dict], source: str)
         print(f"[industry_rank] 保存快照失败 {date_str}: {exc}", file=sys.stderr)
 
 
-def _load_industry_rank_snapshots(days: int = 20) -> list[dict]:
-    """加载最近 N 天的板块快照（按日期升序）。
-    返回 [{"date": "YYYY-MM-DD", "source": "...", "boards": [...]}, ...]
-    """
-    try:
-        files = sorted(_industry_rank_history_dir().glob("*.json"))
-    except Exception:
-        return []
-    if not files:
-        return []
-    recent = files[-days:] if len(files) > days else files
-    out: list[dict] = []
-    for f in recent:
-        try:
-            d = json.loads(f.read_text(encoding="utf-8"))
-            if d.get("boards"):
-                out.append(d)
-        except Exception:
-            continue
-    return out
-
-
 def _compute_board_avg_rank(snapshots: list[dict]) -> dict:
     """计算每个板块在给定快照中的平均排名（行业/概念通用）。
 
@@ -1022,22 +1411,101 @@ def _compute_board_avg_rank(snapshots: list[dict]) -> dict:
     return result
 
 
-def _fetch_industry_board_rank() -> dict:
+def _score_industry_boards(boards: list[dict]) -> list[dict]:
+    """对东财行业板块做综合评分，判断板块资金轮动强度。
+
+    维度（权重）：
+        主力资金 30%（net_inflow，f62 主力净流入）
+        涨停情绪 25%（zt_count，行业内涨停家数）
+        近5日动量 25%（pct_5d，f109 近5日涨跌幅）
+        成交活跃 20%（turnover，f8 换手率）
+    各维度标准化到 [0,100] 后加权求和得到综合得分（score），
+    并按 score 降序给出 score_rank。各维度得分也保留（fund_score 等）。
+
+    标准化规则：
+        - 有符号维度（net_inflow、pct_5d）采用「以 0 为分界的符号感知 Min-Max」：
+          正值映射到 [50,100]，非正值映射到 [0,50]。这样净流入为正/涨幅为正的
+          板块得分 ≥50，净流出/下跌的板块得分 ≤50，避免符号信息被相对排名抹平。
+        - 非负维度（zt_count、turnover）采用常规 Min-Max 映射到 [0,100]。
+        - 背离惩罚：资金净流出的板块，动量分上限压到 50（大涨但资金在撤，不视为强势轮动）。
+    """
+    if not boards:
+        return boards
+
+    def _minmax(vals):
+        lo, hi = min(vals), max(vals)
+        if hi == lo:
+            return [50.0] * len(vals)
+        return [(v - lo) / (hi - lo) * 100.0 for v in vals]
+
+    def _minmax_signed(vals):
+        """符号感知 Min-Max：正数 → [50,100]，非正数 → [0,50]。"""
+        n = len(vals)
+        out = [50.0] * n
+        pos_idx = [i for i, v in enumerate(vals) if v > 0]
+        nonpos_idx = [i for i, v in enumerate(vals) if v <= 0]
+
+        def _fill(idxs, lo, hi):
+            if not idxs:
+                return
+            sub = [vals[i] for i in idxs]
+            mn, mx = min(sub), max(sub)
+            if mx == mn:
+                mid = (lo + hi) / 2.0
+                for i in idxs:
+                    out[i] = mid
+            else:
+                for i in idxs:
+                    out[i] = lo + (vals[i] - mn) / (mx - mn) * (hi - lo)
+
+        _fill(pos_idx, 50.0, 100.0)
+        _fill(nonpos_idx, 0.0, 50.0)
+        return out
+
+    fund = [float(b.get("net_inflow") or 0.0) for b in boards]
+    senti = [int(b.get("zt_count") or 0) for b in boards]
+    momentum = [float(b.get("pct_5d") or 0.0) for b in boards]
+    turnover = [float(b.get("turnover") or 0.0) for b in boards]
+
+    fund_s = _minmax_signed(fund)
+    senti_s = _minmax(senti)
+    mom_s = _minmax_signed(momentum)
+    turn_s = _minmax(turnover)
+
+    # 资金净流出的板块，动量分不再给正向分：大涨但资金在撤属于「背离」，
+    # 不视为强势轮动（将动量分上限压到 50，避免仅靠涨幅把排名顶上去）。
+    for i, b in enumerate(boards):
+        ni = b.get("net_inflow")
+        if ni is not None and ni < 0 and mom_s[i] > 50.0:
+            mom_s[i] = 50.0
+
+    for i, b in enumerate(boards):
+        b["score"] = round(fund_s[i] * 0.30 + senti_s[i] * 0.25 + mom_s[i] * 0.25 + turn_s[i] * 0.20, 1)
+        b["fund_score"] = round(fund_s[i], 1)
+        b["senti_score"] = round(senti_s[i], 1)
+        b["momentum_score"] = round(mom_s[i], 1)
+        b["turnover_score"] = round(turn_s[i], 1)
+
+    for rank, b in enumerate(sorted(boards, key=lambda x: x["score"], reverse=True), 1):
+        b["score_rank"] = rank
+
+    return boards
+
+
+def _fetch_industry_board_rank(refresh: bool = False) -> dict:
     """获取行业板块当日行情并保存快照。
 
-    数据源（双源回退）：
-    1. 东方财富 push2 clist 接口（fs=m:90 t:2 f:!50），字段全（含上涨/下跌家数、换手率）
-    2. 新浪行业板块接口，字段少但稳定（仅涨跌幅、领涨股），东财被限流时回退
-
-    按天缓存：同一天内只拉取一次，避免频繁请求触发东财限流。
-    拉取成功后保存到 industry_rank_history/YYYY-MM-DD.json，用于20天排名计算。
+    数据源：东方财富 push2 clist 接口（fs=m:90 t:2 f:!50），不使用新浪数据。
+    附加数据：主力净流入(f62)、涨停个股（东财涨停股池按行业分组，名称匹配）。
+    按天缓存：同一天内只拉取一次，避免频繁请求触发东财限流（refresh=1 强制刷新）。
+    拉取成功后保存到 industry_rank_history/YYYY-MM-DD.json（每日快照归档）。
     """
     import requests as _req
 
     today = _latest_trading_date()
     cached = _industry_rank_cache.get("data")
     cached_date = _industry_rank_cache.get("date", "")
-    if cached and cached_date == today:
+    if cached and cached_date == today and not refresh:
         return cached
 
     session = _req.Session()
@@ -1047,33 +1515,106 @@ def _fetch_industry_board_rank() -> dict:
         "Referer": "https://quote.eastmoney.com/",
     })
 
-    # ── 数据源1：东财 push2 ──
+    # ── 东财 push2（唯一数据源）──
     boards = _fetch_industry_rank_eastmoney(session)
-
-    # ── 数据源2：新浪（东财失败时回退）──
-    source = "eastmoney"
     if not boards:
-        session.headers.update({"Referer": "https://finance.sina.com.cn/"})
-        boards = _fetch_industry_rank_sina(session)
-        source = "sina"
+        raise RuntimeError("行业板块接口不可用（东财 push2 请求失败）")
 
-    if not boards:
-        raise RuntimeError("行业板块接口不可用（东财 push2 与新浪均失败）")
+    # ── 涨停股池挂到对应板块 ──
+    # 涨停池 hybk 字段粒度偏粗（如 PCB/被动元件/分立器件 都归到「元件」），
+    # 用东财细分行业 em_sub_industry 重新归类，使涨停股落入正确的细分板块；
+    # em_sub 无法匹配到板块名时回退 hybk，避免涨停股丢失。
+    zt_groups = _fetch_zt_pool_by_industry(session)
+    em_sub_map: dict[str, str] = {}
+    try:
+        with open("industry_classification_cache.json", encoding="utf-8") as f:
+            _cls_stocks = json.load(f).get("stocks", {})
+        em_sub_map = {c: (s.get("em_sub_industry") or "") for c, s in _cls_stocks.items()}
+    except Exception:
+        pass
+    board_names = {b["name"].strip() for b in boards}
+    zt_by_board: dict[str, list[dict]] = {}
+    for hybk, items in zt_groups.items():
+        for it in items:
+            em = em_sub_map.get(str(it.get("code", "")), "")
+            ind = em if (em and em in board_names) else hybk
+            zt_by_board.setdefault(ind, []).append(it)
+    for b in boards:
+        stocks = zt_by_board.get(b["name"].strip(), [])
+        stocks.sort(key=lambda s: ((s.get("days") or 1, s.get("pct") or 0)), reverse=True)
+        b["zt_stocks"] = stocks
+        b["zt_count"] = len(stocks)
+
+    # ── 综合评分（板块资金轮动强度）──
+    _score_industry_boards(boards)
 
     boards.sort(key=lambda x: x["pct_chg"])
 
     result = {
         "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "source": source,
+        "source": "eastmoney",
         "total": len(boards),
         "boards": boards,
         "date": today,
     }
     _industry_rank_cache["data"] = result
     _industry_rank_cache["date"] = today
-    # 保存当日快照（用于20天排名计算）
-    _save_industry_rank_snapshot(today, boards, source)
+    # 保存当日快照（每日归档）
+    _save_industry_rank_snapshot(today, boards, "eastmoney")
     return result
+
+
+def _fetch_zt_pool_by_industry(session) -> dict[str, list[dict]]:
+    """东财涨停股池，按行业板块名分组。失败返回空 dict（不影响主行情）。
+
+    接口: push2ex.eastmoney.com/getTopicZTPool
+    字段: c=代码 n=名称 zdp=涨跌幅 fbt=首次封板时间(HHMMSS) zbc=炸板次数
+          hybk=所属行业板块名 zttj={days,ct}=N天M板
+    """
+    date_str = _latest_trading_date().replace("-", "")
+    try:
+        r = session.get(
+            "https://push2ex.eastmoney.com/getTopicZTPool",
+            params={
+                "ut": "7eea3edcaed734bea9cbfc24409ed989",
+                "dpt": "wz.ztzt",
+                "Pageindex": "0",
+                "pagesize": "1000",
+                "sort": "fbt:asc",
+                "date": date_str,
+            },
+            timeout=8,
+        )
+        if r.status_code != 200:
+            return {}
+        pool = (r.json().get("data") or {}).get("pool") or []
+    except Exception as exc:
+        print(f"[zt_pool] 涨停股池拉取失败: {exc}", file=sys.stderr)
+        return {}
+
+    groups: dict[str, list[dict]] = {}
+    for it in pool:
+        ind = str(it.get("hybk", "")).strip()
+        if not ind:
+            continue
+        zttj = it.get("zttj") or {}
+        fbt = it.get("fbt")
+        fbt_str = ""
+        try:
+            t = int(fbt)
+            fbt_str = f"{t // 10000:02d}:{t % 10000 // 100:02d}"
+        except (TypeError, ValueError):
+            pass
+        groups.setdefault(ind, []).append({
+            "code": str(it.get("c", "")),
+            "name": str(it.get("n", "")),
+            "pct": it.get("zdp"),
+            "days": zttj.get("days") or 1,
+            "ct": zttj.get("ct") or 1,
+            "zbc": it.get("zbc") or 0,
+            "fbt": fbt_str,
+        })
+    return groups
 
 
 def _fetch_tencent_div_yields(codes: list) -> dict:
@@ -1110,6 +1651,164 @@ def _fetch_tencent_div_yields(codes: list) -> dict:
     return result
 
 
+def _limit_up_thr(code: str, name: str) -> float:
+    """涨停涨幅阈值(%)：创业板/科创板 20%、主板 ST 5%、主板 10%。"""
+    n = str(name).upper()
+    if code.startswith(("30", "68")):
+        return 19.8         # 创业板/科创板 20%（含 ST，注册制板块）
+    if "ST" in n or "退" in n:
+        return 4.8          # 主板 ST 5%
+    return 9.8              # 主板 10%
+
+
+def _calc_limit_up_days(code: str, name: str) -> int | None:
+    """近 7 个交易日涨停天数（收盘涨幅达到对应板块涨停阈值）。
+
+    直接读取本地 daily_cache 日线（前复权），不逐只拉取网络；
+    缓存缺失或数据不足返回 None（前端显示 "-"）。
+    """
+    from daily_cache import cache_path
+
+    p = cache_path(code)
+    if not p.exists():
+        return None
+    try:
+        df = pd.read_csv(p, usecols=["close"])
+    except Exception:
+        return None
+    if df is None or df.empty or "close" not in df.columns:
+        return None
+    close = pd.to_numeric(df["close"], errors="coerce").dropna()
+    if len(close) < 8:  # 7 个涨跌幅需要 8 个收盘价
+        return None
+    closes = close.iloc[-8:].reset_index(drop=True)
+
+    thr = _limit_up_thr(code, name)
+
+    cnt = 0
+    for i in range(1, 8):
+        prev = float(closes.iloc[i - 1])
+        cur = float(closes.iloc[i])
+        if prev > 0 and (cur / prev - 1) * 100 >= thr:
+            cnt += 1
+    return cnt
+
+
+def _calc_consecutive_up_days(code: str) -> int | None:
+    """当前连续上涨天数（收盘价 > 前收盘价的连续天数，含当日；当日下跌为 0）。
+
+    直接读取本地 daily_cache 日线，从最新一天往前统计连续收涨天数；
+    缓存缺失或数据不足返回 None（前端显示 "-"）。
+    """
+    from daily_cache import cache_path
+
+    p = cache_path(code)
+    if not p.exists():
+        return None
+    try:
+        df = pd.read_csv(p, usecols=["close"])
+    except Exception:
+        return None
+    if df is None or df.empty or "close" not in df.columns:
+        return None
+    close = pd.to_numeric(df["close"], errors="coerce").dropna()
+    if len(close) < 2:
+        return None
+    cnt = 0
+    for i in range(len(close) - 1, 0, -1):
+        if float(close.iloc[i]) > float(close.iloc[i - 1]):
+            cnt += 1
+        else:
+            break
+    return cnt
+
+
+def _calc_consecutive_limit_up_days(code: str, name: str) -> int | None:
+    """当前连续涨停天数（连板高度，收盘涨幅达到涨停阈值的连续天数；当日未涨停为 0）。
+
+    直接读取本地 daily_cache 日线，从最新一天往前统计连续涨停天数；
+    缓存缺失或数据不足返回 None（前端显示 "-"）。
+    """
+    from daily_cache import cache_path
+
+    p = cache_path(code)
+    if not p.exists():
+        return None
+    try:
+        df = pd.read_csv(p, usecols=["close"])
+    except Exception:
+        return None
+    if df is None or df.empty or "close" not in df.columns:
+        return None
+    close = pd.to_numeric(df["close"], errors="coerce").dropna()
+    if len(close) < 2:
+        return None
+
+    thr = _limit_up_thr(code, name)
+
+    cnt = 0
+    for i in range(len(close) - 1, 0, -1):
+        prev = float(close.iloc[i - 1])
+        cur = float(close.iloc[i])
+        if prev > 0 and (cur / prev - 1) * 100 >= thr:
+            cnt += 1
+        else:
+            break
+    return cnt
+
+
+def _calc_limit_up_tags(code: str, name: str) -> list[str]:
+    """计算涨停标签（多个共存）：N连板 / M天K板。
+
+    直接读取本地 daily_cache 日线，基于收盘涨幅达到涨停阈值判断每日是否涨停：
+      - N连板：当前连续涨停天数 >= 2
+      - M天K板：近 M 天（5/7/10）涨停 K 次，且 K > 连板天数（存在非连续涨停）
+    缓存缺失或数据不足返回空列表。
+    """
+    from daily_cache import cache_path
+
+    p = cache_path(code)
+    if not p.exists():
+        return []
+    try:
+        df = pd.read_csv(p, usecols=["close"])
+    except Exception:
+        return []
+    if df is None or df.empty or "close" not in df.columns:
+        return []
+    close = pd.to_numeric(df["close"], errors="coerce").dropna()
+    if len(close) < 2:
+        return []
+
+    thr = _limit_up_thr(code, name)
+
+    def is_limit_up(i: int) -> bool:
+        prev = float(close.iloc[i - 1])
+        cur = float(close.iloc[i])
+        return prev > 0 and (cur / prev - 1) * 100 >= thr
+
+    # 连续涨停天数（从最新往前）
+    lz = 0
+    for i in range(len(close) - 1, 0, -1):
+        if is_limit_up(i):
+            lz += 1
+        else:
+            break
+
+    tags = []
+    if lz >= 2:
+        tags.append(f"{lz}连板")
+
+    for w in (5, 7, 10):
+        if len(close) < w + 1:
+            continue
+        cnt = sum(1 for i in range(len(close) - w, len(close)) if is_limit_up(i))
+        if cnt >= 2 and cnt > lz:
+            tags.append(f"{w}天{cnt}板")
+
+    return tags
+
+
 def _fetch_stock_overview() -> dict:
     """拉取全市场 A 股整体数据（排除北交所）。
 
@@ -1118,7 +1817,12 @@ def _fetch_stock_overview() -> dict:
 
     fs 市场过滤：沪深主板 + 创业板 + 科创板（不含北交所 m:0 t:81 s:2048）。
     字段映射：f12代码 f14名称 f2最新价 f3涨跌幅 f20总市值 f133股息率(含预案口径，
-    仅作腾讯接口失败时的回退；主口径为腾讯字段64的标准TTM股息率)。
+    仅作腾讯接口失败时的回退；主口径为腾讯字段64的标准TTM股息率)、
+    f100行业(东财行业板块，仅作细分行业回退)。
+
+    行业口径：最终统一为东财三级细分行业（industry_classification_cache.json 的
+    em_sub_industry，与 SEPA Stage2 表格的 display_industry 一致）；f100 仅作
+    细分行业缺失时的兜底。
 
     按天缓存：全市场约5500只、单次拉取约8秒（含腾讯股息率56个批量请求），
     同一天内直接返回缓存。
@@ -1143,7 +1847,7 @@ def _fetch_stock_overview() -> dict:
         "https://82.push2.eastmoney.com",
         "https://push2.eastmoney.com",
     ]
-    fields = "f12,f14,f2,f3,f20,f133"
+    fields = "f12,f14,f2,f3,f20,f133,f100"
     # 沪深主板+创业板+科创板，天然排除北交所
     fs = "m:1+t:2,m:0+t:6,m:0+t:80,m:1+t:23"
 
@@ -1197,6 +1901,7 @@ def _fetch_stock_overview() -> dict:
                 "pct_chg": x.get("f3"),
                 "market_cap": x.get("f20"),   # 总市值（元）
                 "div_yield": x.get("f133"),   # 股息率(TTM, %)
+                "industry": x.get("f100", ""),  # 东财行业板块（与行业板块排行一致）
             })
         if len(all_rows) >= (total or 0):
             break
@@ -1217,6 +1922,37 @@ def _fetch_stock_overview() -> dict:
         if row["code"] in tencent_yields:
             row["div_yield"] = tencent_yields[row["code"]]
 
+    # 涨停天数：近 7 个交易日涨停次数（读本地日线缓存计算）
+    for row in all_rows:
+        row["limit_up_days"] = _calc_limit_up_days(row["code"], row["name"])
+
+    # 连涨天数：当前连续收涨天数（读本地日线缓存计算）
+    for row in all_rows:
+        row["consecutive_up_days"] = _calc_consecutive_up_days(row["code"])
+
+    # 连续涨停天数：当前连板高度（读本地日线缓存计算）
+    for row in all_rows:
+        row["consecutive_limit_up_days"] = _calc_consecutive_limit_up_days(row["code"], row["name"])
+
+    # 行业：f100 空值（'-'）置空
+    for row in all_rows:
+        if row.get("industry") == "-":
+            row["industry"] = ""
+
+    # 行业口径统一：优先用东财三级细分行业（em_sub_industry），
+    # 与 SEPA Stage2 表格的 display_industry 一致；缺失时回退 f100 东财行业板块。
+    try:
+        with open("industry_classification_cache.json", encoding="utf-8") as f:
+            _ind_cls = json.load(f).get("stocks", {})
+        for row in all_rows:
+            info = _ind_cls.get(str(row["code"]))
+            if info:
+                em_sub = info.get("em_sub_industry") or info.get("sub_industry")
+                if em_sub:
+                    row["industry"] = em_sub
+    except Exception:
+        pass
+
     result = {
         "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "source": "eastmoney+tencent_div",
@@ -1227,78 +1963,6 @@ def _fetch_stock_overview() -> dict:
     _stock_overview_cache["data"] = result
     _stock_overview_cache["date"] = today
     return result
-
-
-def _fetch_industry_rank_history(days: int = 20, date_filter: str = "", industry_filter: str = "") -> dict:
-    """获取最近 N 天行业板块排行数据 + 20天平均排名。
-
-    参数：
-        days: 取最近多少个交易日的快照（默认20）
-        date_filter: 指定日期 "YYYY-MM-DD"，只返回该日数据；为空返回全部
-        industry_filter: 行业名称关键词，模糊匹配过滤
-
-    返回结构：
-    {
-        "generated_at": "...",
-        "days_available": int,        # 实际可用快照数
-        "days_requested": int,        # 请求的 days
-        "date_filter": str,           # 日期过滤
-        "industry_filter": str,       # 行业过滤
-        "avg_ranks": { name: {"avg_rank": float, "days": int, "code": str, "source": str} },
-        "rows": [                     # 展平后的行（每板块每日一行）
-            {"date": "...", "name": "...", "code": "...", "pct_chg": ..., ..., "avg_rank": float}
-        ]
-    }
-    """
-    # 触发当日快照拉取（若当天尚未拉取）
-    try:
-        _fetch_industry_board_rank()
-    except Exception as exc:
-        print(f"[industry_rank_history] 当日快照拉取失败: {exc}", file=sys.stderr)
-
-    snapshots = _load_industry_rank_snapshots(days)
-    if not snapshots:
-        return {
-            "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "days_available": 0,
-            "days_requested": days,
-            "date_filter": date_filter,
-            "industry_filter": industry_filter,
-            "avg_ranks": {},
-            "rows": [],
-        }
-
-    avg_ranks = _compute_board_avg_rank(snapshots)
-
-    # 展平为行
-    rows: list[dict] = []
-    for snap in snapshots:
-        snap_date = snap.get("date", "")
-        if date_filter and snap_date != date_filter:
-            continue
-        snap_source = snap.get("source", "")
-        for b in snap.get("boards", []):
-            name = b.get("name", "").strip()
-            if industry_filter and industry_filter not in name:
-                continue
-            row = dict(b)
-            row["date"] = snap_date
-            row["source"] = snap_source
-            meta = avg_ranks.get(name)
-            row["avg_rank"] = meta["avg_rank"] if meta else None
-            row["rank_days"] = meta["days"] if meta else 0
-            rows.append(row)
-
-    return {
-        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "days_available": len(snapshots),
-        "days_requested": days,
-        "date_filter": date_filter,
-        "industry_filter": industry_filter,
-        "date_list": [s.get("date", "") for s in snapshots],
-        "avg_ranks": avg_ranks,
-        "rows": rows,
-    }
 
 
 def _fetch_industry_rank_eastmoney(session, fs: str = "m:90 t:2 f:!50") -> list[dict]:
@@ -1313,8 +1977,11 @@ def _fetch_industry_rank_eastmoney(session, fs: str = "m:90 t:2 f:!50") -> list[
         "https://82.push2.eastmoney.com",
         "https://19.push2.eastmoney.com",
         "https://push2.eastmoney.com",
+        # push2 被限流（RemoteDisconnected）时的东财延迟行情回退，仍为东财数据源
+        "https://push2delay.eastmoney.com",
     ]
-    fields = "f2,f3,f4,f8,f12,f14,f104,f105,f128,f136"
+    # f62 = 主力净流入净额（元）；f109 = 近5日涨跌幅（%）
+    fields = "f2,f3,f4,f8,f12,f14,f62,f104,f105,f109,f128,f136"
 
     base_url = None
     for host in hosts:
@@ -1369,17 +2036,45 @@ def _fetch_industry_rank_eastmoney(session, fs: str = "m:90 t:2 f:!50") -> list[
         pct = it.get("f3")
         if pct is None or pct == "-":
             continue
+        net_inflow = it.get("f62")
+        if net_inflow not in (None, "-", ""):
+            try:
+                net_inflow = round(float(net_inflow), 2)
+            except (TypeError, ValueError):
+                net_inflow = None
+        else:
+            net_inflow = None
+        # 近5日涨跌幅（动量维度）
+        pct_5d = it.get("f109")
+        if pct_5d in (None, "-", ""):
+            pct_5d = None
+        else:
+            try:
+                pct_5d = round(float(pct_5d), 2)
+            except (TypeError, ValueError):
+                pct_5d = None
+        # 换手率（成交活跃度维度）
+        turnover = it.get("f8")
+        if turnover in (None, "-", ""):
+            turnover = None
+        else:
+            try:
+                turnover = round(float(turnover), 2)
+            except (TypeError, ValueError):
+                turnover = None
         boards.append({
             "code": str(it.get("f12", "")),
             "name": str(it.get("f14", "")),
             "close": it.get("f2"),
             "pct_chg": round(float(pct), 2),
             "chg_amount": it.get("f4"),
-            "turnover": it.get("f8"),
+            "turnover": turnover,
+            "net_inflow": net_inflow,
             "up_count": it.get("f104", 0),
             "down_count": it.get("f105", 0),
             "leader_name": str(it.get("f128", "")),
             "leader_pct": it.get("f136"),
+            "pct_5d": pct_5d,
         })
     return boards
 
@@ -1680,6 +2375,28 @@ def fetch_fundamental(code: str, force_refresh: bool = False) -> dict:
                     "筹资活动产生的现金流量净额": "筹资现金流净额"}
         recent = cash_df.sort_values("报告日", ascending=False).head(3)
         fund["cashflow"] = _format_financial_rows(recent, key_cols)
+
+        # 现金流组合判断原始数值（近6期：经营/筹资净额 + 分红/还债流出，单位：元）
+        # 用于前端判断：经营为正+筹资为负（主要系分红）= 自我造血；经营为负+筹资为正 = 靠融资续命
+        cash_sorted = cash_df.sort_values("报告日", ascending=False)
+        cf_raw_cols = {
+            "经营活动产生的现金流量净额": "ocf",
+            "筹资活动产生的现金流量净额": "fcf",
+            "分配股利、利润或偿付利息所支付的现金": "div_paid",
+            "偿还债务支付的现金": "debt_repaid",
+        }
+        cf_dates: list[str] = []
+        cf_series: dict[str, list] = {k: [] for k in cf_raw_cols.values()}
+        for _, row in cash_sorted.head(6).iterrows():
+            cf_dates.append(str(row["报告日"])[:8])
+            for col, key in cf_raw_cols.items():
+                try:
+                    v = float(row[col]) if col in cash_sorted.columns else None
+                    cf_series[key].append(v if v == v else None)  # NaN → None
+                except (ValueError, TypeError):
+                    cf_series[key].append(None)
+        if cf_dates and any(v is not None for vs in cf_series.values() for v in vs):
+            fund["cashflow_history"] = {"dates": cf_dates, **cf_series}
     except Exception:
         pass
 
@@ -1798,6 +2515,12 @@ class StockHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/sepa/stage2/remote/load":
             self.handle_stage2_remote("load", parsed.query)
             return
+        if parsed.path == "/api/oversold/remote/dates":
+            self.handle_oversold_remote("dates")
+            return
+        if parsed.path == "/api/oversold/remote/load":
+            self.handle_oversold_remote("load", parsed.query)
+            return
         if parsed.path == "/api/sepa_stage1":
             self.handle_sepa_stage1(parsed.query)
             return
@@ -1812,6 +2535,15 @@ class StockHandler(SimpleHTTPRequestHandler):
             return
         if parsed.path == "/api/macro":
             self.handle_macro(parsed.query)
+            return
+        if parsed.path == "/api/cpi_ppi":
+            self.handle_cpi_ppi(parsed.query)
+            return
+        if parsed.path == "/api/cpi_ppi/history":
+            self.handle_cpi_ppi_history(parsed.query)
+            return
+        if parsed.path == "/api/gdp_history":
+            self.handle_gdp_history(parsed.query)
             return
         if parsed.path == "/api/equity_bond_spread":
             self.handle_equity_bond_spread(parsed.query)
@@ -1843,16 +2575,25 @@ class StockHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/stock_overview":
             self.handle_stock_overview(parsed.query)
             return
+        if parsed.path == "/api/watchlist":
+            self.handle_watchlist()
+            return
         if parsed.path == "/api/investor/update":
             self.handle_investor_update(parsed.query)
             return
         super().do_GET()
 
     def do_POST(self) -> None:
-        """处理POST请求（当前仅扫描机上报接口）"""
+        """处理POST请求（扫描机上报接口 + 个股收藏）"""
         parsed = urlparse(self.path)
         if parsed.path == "/api/sepa/stage2/upload":
             self.handle_stage2_upload()
+            return
+        if parsed.path == "/api/oversold/upload":
+            self.handle_oversold_upload()
+            return
+        if parsed.path == "/api/watchlist":
+            self.handle_watchlist_post()
             return
         self.send_error(404, "Not Found")
 
@@ -1950,11 +2691,124 @@ class StockHandler(SimpleHTTPRequestHandler):
                 self.write_json({"ok": False,
                                 "error": f"扫描机响应非 JSON（HTTP {r.status_code}）"}, status=502)
                 return
+            # 行情日期对齐过滤：停牌/行情源未更新的股票 date 仍是前一交易日，
+            # 导致"查 9月9日却混出 9月8日的行"。查一天只显示一天：
+            # 剔除 date ≠ scan_date 的行（扫描日为空或无 date 列时不过滤）。
+            if payload.get("ok") and isinstance(payload.get("rows"), list):
+                cols = payload.get("columns") or []
+                scan_date = str(payload.get("scan_date") or "")[:10]
+                if scan_date and "date" in cols:
+                    di = cols.index("date")
+                    payload["rows"] = [
+                        row for row in payload["rows"]
+                        if di < len(row) and str(row[di] or "")[:10] == scan_date
+                    ]
+                    payload["count"] = len(payload["rows"])
             self.write_json(payload, status=r.status_code)
         except Exception as exc:  # 连接失败/超时等
             self.write_json({"ok": False,
                             "error": f"无法连接扫描机 {SCANNER_QUERY_BASE}（{exc.__class__.__name__}）。"
                                      "请确认扫描机已部署 sepa_query_server（deploy.sh 自动注册）且在线"},
+                            status=502)
+
+    def handle_oversold_upload(self) -> None:
+        """接收扫描机（oversold_job.py）上报的超跌反弹候选结果。
+
+        流程：校验 token → JSON 重建 DataFrame → 写服务器 SQLite（oversold_candidates）
+        → 原子覆写 oversold_rebound_candidates_test.csv（前端页面/下载链路复用）。
+        """
+        expected_token = os.environ.get("SEPA_UPLOAD_TOKEN", "")
+        if expected_token and self.headers.get("X-Upload-Token") != expected_token:
+            self.write_json({"ok": False, "error": "invalid upload token"}, status=403)
+            return
+
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            length = 0
+        if length <= 0 or length > 200 * 1024 * 1024:  # 上限 200MB
+            self.write_json({"ok": False, "error": "invalid body size"}, status=400)
+            return
+        try:
+            payload = json.loads(self.rfile.read(length))
+        except Exception as exc:
+            self.write_json({"ok": False, "error": f"invalid JSON: {exc}"}, status=400)
+            return
+
+        columns = payload.get("columns") or []
+        rows = payload.get("rows") or []
+        scan_date = str(payload.get("scan_date") or "")[:10]
+        generated_at = str(payload.get("generated_at") or "")[:19]
+        if not columns or not isinstance(rows, list) or not scan_date:
+            self.write_json({"ok": False, "error": "columns/rows/scan_date required"}, status=400)
+            return
+
+        try:
+            df = pd.DataFrame(rows, columns=columns)
+            if "code" in df.columns:
+                df["code"] = df["code"].astype(str).str.zfill(6)
+            if not generated_at:
+                generated_at = time.strftime("%Y-%m-%d %H:%M:%S")
+            if "scanned_at" not in df.columns:
+                df["scanned_at"] = generated_at
+
+            # 1) 服务器侧 SQLite 历史归档（同 scan_date+code 覆盖）
+            from sepa_db import save_candidates
+            saved = save_candidates(df, "oversold.db", scan_date, table="oversold_candidates")
+
+            # 2) 原子覆写 CSV
+            csv_path = Path("oversold_rebound_candidates_test.csv")
+            tmp_path = csv_path.with_suffix(".csv.tmp")
+            df.to_csv(tmp_path, index=False, encoding="utf-8")
+            os.replace(tmp_path, csv_path)
+
+            self.write_json({
+                "ok": True,
+                "count": len(df),
+                "scan_date": scan_date,
+                "sqlite_saved": saved,
+            })
+        except Exception as exc:
+            traceback.print_exc()
+            self.write_json({"ok": False, "error": str(exc)}, status=500)
+
+    def handle_oversold_remote(self, action: str, query: str = "") -> None:
+        """中转代理：浏览器 → 本服务 → 扫描机 sepa_query_server 的超跌反弹数据。
+
+        与 handle_stage2_remote 一致，仅切换为 /api/oversold/* 路径。
+        """
+        url = f"{SCANNER_QUERY_BASE}/api/oversold/dates" if action == "dates" \
+            else f"{SCANNER_QUERY_BASE}/api/oversold/data"
+        if action == "load":
+            date = (parse_qs(query).get("date", [""])[0] or "").strip()[:10]
+            if date:
+                url += f"?date={date}"
+        try:
+            import requests as _req
+            session = _req.Session()
+            session.trust_env = False
+            r = session.get(url, timeout=15)
+            try:
+                payload = r.json()
+            except ValueError:
+                self.write_json({"ok": False,
+                                "error": f"扫描机响应非 JSON（HTTP {r.status_code}）"}, status=502)
+                return
+            if payload.get("ok") and isinstance(payload.get("rows"), list):
+                cols = payload.get("columns") or []
+                scan_date = str(payload.get("scan_date") or "")[:10]
+                if scan_date and "date" in cols:
+                    di = cols.index("date")
+                    payload["rows"] = [
+                        row for row in payload["rows"]
+                        if di < len(row) and str(row[di] or "")[:10] == scan_date
+                    ]
+                    payload["count"] = len(payload["rows"])
+            self.write_json(payload, status=r.status_code)
+        except Exception as exc:
+            self.write_json({"ok": False,
+                            "error": f"无法连接扫描机 {SCANNER_QUERY_BASE}（{exc.__class__.__name__}）。"
+                                     "请确认扫描机已部署 sepa_query_server 且在线"},
                             status=502)
 
     def handle_sepa(self, query: str) -> None:
@@ -2101,6 +2955,39 @@ class StockHandler(SimpleHTTPRequestHandler):
             traceback.print_exc()
             self.write_json({"error": str(exc)}, status=500)
 
+    def handle_cpi_ppi(self, query: str = "") -> None:
+        """GET /api/cpi_ppi：中美两国最近 CPI/PPI + 下次公布时间。"""
+        params = parse_qs(query)
+        force = params.get("force", ["false"])[0].lower() == "true"
+        try:
+            result = fetch_cpi_ppi(force_refresh=force)
+            self.write_json(result)
+        except Exception as exc:
+            traceback.print_exc()
+            self.write_json({"error": str(exc)}, status=500)
+
+    def handle_cpi_ppi_history(self, query: str = "") -> None:
+        """GET /api/cpi_ppi/history：中美两国近 10 年 CPI/PPI 月度序列。"""
+        params = parse_qs(query)
+        force = params.get("force", ["false"])[0].lower() == "true"
+        try:
+            result = fetch_cpi_ppi_history(force_refresh=force)
+            self.write_json(result)
+        except Exception as exc:
+            traceback.print_exc()
+            self.write_json({"error": str(exc)}, status=500)
+
+    def handle_gdp_history(self, query: str = "") -> None:
+        """GET /api/gdp_history：中美两国近 10 年 GDP 季度序列。"""
+        params = parse_qs(query)
+        force = params.get("force", ["false"])[0].lower() == "true"
+        try:
+            result = fetch_gdp_history(force_refresh=force)
+            self.write_json(result)
+        except Exception as exc:
+            traceback.print_exc()
+            self.write_json({"error": str(exc)}, status=500)
+
     def handle_equity_bond_spread(self, query: str = "") -> None:
         """沪深300股债利差（FED 模型）：盈利收益率 - 10年期国债收益率。"""
         params = parse_qs(query)
@@ -2211,27 +3098,32 @@ class StockHandler(SimpleHTTPRequestHandler):
             self.write_json({"error": str(exc)}, status=500)
 
     def handle_industry_rank(self, query: str) -> None:
-        """行业板块涨幅排行（最近 N 个交易日，含20天平均排名）。
+        """行业板块当日排行（仅东方财富 push2 数据源，不用新浪）。
 
         查询参数：
-            days: 取最近多少个交易日快照（默认20）
-            date: 指定日期 "YYYY-MM-DD"，只返回该日数据；为空返回全部
             industry: 行业名称关键词，模糊匹配过滤
+            refresh: 1 强制刷新当日缓存（手动刷新按钮）
 
-        数据源：东方财富 push2 / 新浪行业板块接口（双源回退）。
-        返回字段：日期、板块代码、名称、涨跌幅、涨跌额、换手率、上涨/下跌家数、领涨股、20天平均排名。
+        返回字段：板块代码、名称、涨跌幅、换手率、主力净流入、上涨/下跌家数、
+        领涨股、涨停个股列表（zt_stocks：代码/名称/涨幅/N天M板/首次封板时间）。
         """
-        params = parse_qs(query)
-        days = int(params.get("days", ["20"])[0] or "20")
-        date_filter = params.get("date", [""])[0].strip()
+        # query 可能包含 UTF-8 编码的中文关键词，需要正确解码
+        from urllib.parse import unquote
+        params = parse_qs(unquote(query, encoding="utf-8"))
         industry_filter = params.get("industry", [""])[0].strip()
+        refresh = params.get("refresh", [""])[0] == "1"
         try:
-            result = _fetch_industry_rank_history(
-                days=days,
-                date_filter=date_filter,
-                industry_filter=industry_filter,
-            )
-            self.write_json(result)
+            result = _fetch_industry_board_rank(refresh=refresh)
+            boards = result.get("boards") or []
+            if industry_filter:
+                boards = [b for b in boards if industry_filter in b.get("name", "")]
+            self.write_json({
+                "generated_at": result.get("generated_at", ""),
+                "source": result.get("source", "eastmoney"),
+                "date": result.get("date", ""),
+                "total": len(boards),
+                "boards": boards,
+            })
         except Exception as exc:
             traceback.print_exc()
             self.write_json({"error": str(exc)}, status=500)
@@ -2280,6 +3172,103 @@ class StockHandler(SimpleHTTPRequestHandler):
         except Exception as exc:
             traceback.print_exc()
             self.write_json({"error": str(exc)}, status=500)
+
+    def handle_watchlist(self) -> None:
+        """GET /api/watchlist：返回收藏列表（含名称/行业/市值/备注）。"""
+        with _watchlist_lock:
+            wl = _load_watchlist()
+
+        # 行业/市值回退（读本地行业分类缓存：东财细分行业 + 市值）
+        ind_map = {}
+        ind_cap_map = {}
+        try:
+            with open("industry_classification_cache.json", encoding="utf-8") as f:
+                ind_stocks = json.load(f).get("stocks", {})
+            ind_map = {c: (s.get("em_sub_industry", "") or s.get("industry", "")) for c, s in ind_stocks.items()}
+            ind_cap_map = {c: s.get("market_cap", 0) for c, s in ind_stocks.items()}
+        except Exception:
+            pass
+
+        # 名称/市值/行业（优先用整体分析缓存的东财细分行业，与「股票整体分析」口径一致）
+        cap_map = {}
+        name_map = {}
+        ind_ov_map = {}
+        ov = _stock_overview_cache.get("data")
+        if not ov:
+            # 缓存为空（如服务器刚重启）：拉取一次，保证行业口径与股票整体分析一致
+            try:
+                ov = _fetch_stock_overview()
+            except Exception:
+                ov = None
+        if ov:
+            for s in ov.get("stocks", []):
+                cap_map[s.get("code")] = s.get("market_cap")
+                name_map[s.get("code")] = s.get("name")
+                ind_ov_map[s.get("code")] = s.get("industry", "")
+
+        stocks = []
+        for code in sorted(wl.keys()):
+            item = wl[code]
+            cap = cap_map.get(code) or ind_cap_map.get(code, 0)
+            industry = ind_ov_map.get(code) or ind_map.get(code, "")
+            name = item.get("name") or name_map.get(code, "")
+            stocks.append({
+                "code": code,
+                "name": name,
+                "note": item.get("note", ""),
+                "added_at": item.get("added_at", ""),
+                "industry": industry,
+                "market_cap": cap,
+                "tags": _calc_limit_up_tags(code, name),
+            })
+        self.write_json({"stocks": stocks})
+
+    def handle_watchlist_post(self) -> None:
+        """POST /api/watchlist：body {action: add|remove|note, code, name?, note?}。"""
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            length = 0
+        if length <= 0 or length > 1 * 1024 * 1024:
+            self.write_json({"ok": False, "error": "invalid body"}, status=400)
+            return
+        try:
+            payload = json.loads(self.rfile.read(length))
+        except Exception as exc:
+            self.write_json({"ok": False, "error": f"invalid JSON: {exc}"}, status=400)
+            return
+
+        action = payload.get("action")
+        code = str(payload.get("code") or "").strip().zfill(6)
+        if len(code) != 6 or not code.isdigit():
+            self.write_json({"ok": False, "error": "invalid code"}, status=400)
+            return
+
+        with _watchlist_lock:
+            wl = _load_watchlist()
+            if action == "add":
+                existing = wl.get(code, {})
+                wl[code] = {
+                    "name": payload.get("name") or existing.get("name", ""),
+                    "note": existing.get("note", ""),
+                    "added_at": existing.get("added_at") or time.strftime("%Y-%m-%d %H:%M:%S"),
+                }
+            elif action == "remove":
+                wl.pop(code, None)
+            elif action == "note":
+                if code not in wl:
+                    wl[code] = {
+                        "name": payload.get("name", ""),
+                        "note": "",
+                        "added_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    }
+                wl[code]["note"] = str(payload.get("note") or "")
+            else:
+                self.write_json({"ok": False, "error": "unknown action"}, status=400)
+                return
+            _save_watchlist(wl)
+
+        self.write_json({"ok": True})
 
     def handle_industry(self, query: str) -> None:
         """处理行业分析 API 请求"""
@@ -2388,8 +3377,8 @@ class StockHandler(SimpleHTTPRequestHandler):
         total = int(params.get("total", ["5000"])[0])
         batch = int(params.get("batch", ["200"])[0])
 
-        if scan_type not in ("stage1", "stage2", "value_bottom"):
-            self.write_json({"error": "type must be stage1, stage2, or value_bottom"}, status=400)
+        if scan_type not in ("stage1", "stage2", "value_bottom", "oversold"):
+            self.write_json({"error": "type must be stage1, stage2, value_bottom, or oversold"}, status=400)
             return
 
         key = f"scan_{scan_type}"
@@ -2429,6 +3418,9 @@ class StockHandler(SimpleHTTPRequestHandler):
         elif table_type == "value_bottom":
             csv_path = "value_bottom_candidates_test.csv"
             filename = "Value_Bottom_Candidates.xlsx"
+        elif table_type == "oversold":
+            csv_path = "oversold_rebound_candidates_test.csv"
+            filename = "Oversold_Rebound_Candidates.xlsx"
         else:
             csv_path = "test_candidates.csv"
             filename = "Stock_Candidates.xlsx"

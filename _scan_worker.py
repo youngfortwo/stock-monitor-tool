@@ -68,7 +68,7 @@ def merge_and_write(pattern: str, output: str, sort_cols: list[str]) -> int:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--type", required=True, choices=["stage1", "stage2", "value_bottom"])
+    parser.add_argument("--type", required=True, choices=["stage1", "stage2", "value_bottom", "oversold"])
     parser.add_argument("--total", type=int, default=5000)
     parser.add_argument("--batch", type=int, default=200)
     args = parser.parse_args()
@@ -83,6 +83,11 @@ def main():
         prefix = "vb_"
         output = "value_bottom_candidates_test.csv"
         progress_file = "scan_progress_vb.json"
+    elif args.type == "oversold":
+        script = "oversold_rebound_scanner.py"
+        prefix = "ob_"
+        output = "oversold_rebound_candidates_test.csv"
+        progress_file = "scan_progress_ob.json"
     else:
         script = "sepa_stage2_scanner.py"
         prefix = "sepa_"
