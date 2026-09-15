@@ -1829,7 +1829,9 @@ tr.zt-expand-row > td {
     </div>
   </div>
   <div class="muted" style="margin-bottom: 10px;">
-    规则（左侧埋伏·抬头版）：60日内最大回撤≥30%（阶段超跌）+ 近20日不创新低（底部探明）+ 距低点反弹&lt;30%（排除暴涨后回调）+ 均线抬头（MA5&gt;MA13&gt;MA21，短期多头排列）+ 量能初现（10日均量&gt;30日均量、今日温和放量且低于60日峰量70%，未爆拉）+ 未突破（收盘距90日高点仍有25%以上空间，没大涨），剔除 ST/退市股。
+    共享门槛（两类信号都要满足）：60日内最大回撤≥30%（阶段超跌）+ 未突破（收盘距90日高点仍有25%以上空间，没大涨），剔除 ST/退市股。<br />
+    <strong>左侧埋伏</strong>（启动前介入）：近20日不创新低（底部探明）+ 距低点反弹&lt;30%（排除暴涨后回调）+ 均线抬头（MA5&gt;MA13&gt;MA21，短期多头排列）+ 量能初现（10日均量&gt;30日均量、今日温和放量且低于60日峰量70%，未爆拉）。<br />
+    <strong>右侧启动</strong>（启动后数日内介入）：收盘刚站上MA30（1~5天）+ 近3日最大量≥30日均量2倍（真实放量）+ MA5&gt;MA13（短期转向）+ 距低点反弹&lt;50%（涨幅未透支）。
   </div>
   <div style="margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
      <span class="muted" style="font-size: 12px;">筛选：</span>
@@ -1841,6 +1843,16 @@ tr.zt-expand-row > td {
            <a data-action="all">全选</a><a data-action="none">清空</a><a data-action="invert">反选</a>
          </div>
          <div style="padding:0 8px;"><input type="text" class="ms-dropdown-search" placeholder="搜索市场…" /></div>
+         <div class="ms-dropdown-options"></div>
+       </div>
+     </div>
+     <div class="ms-dropdown" id="filter-signal-ob" data-label="信号">
+       <div class="ms-dropdown-btn" tabindex="0">信号</div>
+       <div class="ms-dropdown-panel">
+         <div class="ms-dropdown-actions">
+           <a data-action="all">全选</a><a data-action="none">清空</a><a data-action="invert">反选</a>
+         </div>
+         <div style="padding:0 8px;"><input type="text" class="ms-dropdown-search" placeholder="搜索信号…" /></div>
          <div class="ms-dropdown-options"></div>
        </div>
      </div>
@@ -1860,6 +1872,7 @@ tr.zt-expand-row > td {
         <th>名称</th>
         <th>行业</th>
         <th>市场</th>
+        <th>信号</th>
         <th>日期</th>
         <th>收盘价</th>
         <th>涨跌幅</th>
@@ -1872,7 +1885,7 @@ tr.zt-expand-row > td {
       </tr>
     </thead>
     <tbody id="ob-body">
-      <tr><td colspan="13">Loading...</td></tr>
+      <tr><td colspan="14">Loading...</td></tr>
     </tbody>
   </table>
   <div class="pagination">
@@ -2896,6 +2909,7 @@ function renderObRows() {
   const { rows, page } = tableState.ob;
   const codeFilter = document.getElementById("filter-code-ob").value.trim();
   const boardFilter = getMultiSelect("filter-board-ob");
+  const signalFilter = getMultiSelect("filter-signal-ob");
 
   let filtered = rows;
   if (codeFilter) filtered = filtered.filter(r => (r.code || "").includes(codeFilter));
@@ -2908,14 +2922,18 @@ function renderObRows() {
       });
     });
   }
+  // 历史数据无 signal_type 字段（双分支上线前的扫描结果），按左侧埋伏归类
+  if (signalFilter.length) {
+    filtered = filtered.filter(r => signalFilter.includes(r.signal_type || "左侧埋伏"));
+  }
 
-  const active = !!(codeFilter || boardFilter.length);
+  const active = !!(codeFilter || boardFilter.length || signalFilter.length);
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE) || 1;
   const safePage = Math.min(page, totalPages);
   if (page !== safePage) tableState.ob.page = safePage;
 
   if (!filtered.length) {
-    tbody.innerHTML = '<tr><td colspan="13">无匹配结果</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="14">无匹配结果</td></tr>';
     document.getElementById("ob-prev").disabled = true;
     document.getElementById("ob-next").disabled = true;
     document.getElementById("ob-page-info").textContent = `第 1/1 页${active ? ` (筛选后 0/${rows.length} 条)` : ` (${rows.length} 条)`}`;
@@ -2933,12 +2951,15 @@ function renderObRows() {
       const ddCls = Number(row.max_drawdown_pct) >= 50 ? "neg" : "";
       const conv = Number(row.ma_convergence_pct);
       const convCls = !isNaN(conv) && conv < 0 ? "pass" : "";  // 负值=MA5在MA30上方=抬头
+      const signal = row.signal_type || "左侧埋伏";
+      const signalCls = signal === "右侧启动" ? "pos" : "";
       return `
 <tr>
   <td><a class="stock-link" href="${link}" target="_blank" rel="noopener">${code}</a></td>
   <td>${row.name || ""}</td>
   <td>${row.display_industry || row.industry || ""}</td>
   <td>${row.board || "-"}</td>
+  <td class="${signalCls}">${signal}</td>
   <td>${row.date || ""}</td>
   <td>${fmtNumber(row.close)}</td>
   <td class="${pctCls}">${fmtNumber(row.pct_chg)}%</td>
@@ -5336,9 +5357,15 @@ initMultiSelect("filter-board-ob", () => {
   renderObRows();
 });
 setMultiSelectOptions("filter-board-ob", ["主板", "创业板", "科创板", "北交所"]);
+initMultiSelect("filter-signal-ob", () => {
+  tableState.ob.page = 1;
+  renderObRows();
+});
+setMultiSelectOptions("filter-signal-ob", ["左侧埋伏", "右侧启动"]);
 document.getElementById("filter-reset-ob").addEventListener("click", () => {
   document.getElementById("filter-code-ob").value = "";
   clearMultiSelect("filter-board-ob");
+  clearMultiSelect("filter-signal-ob");
   tableState.ob.page = 1;
   renderObRows();
 });
