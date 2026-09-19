@@ -5851,21 +5851,65 @@ function renderIndStocks() {
       '<textarea class="tf-edit-textarea tf-md-editor" id="tf-edit-md" spellcheck="false"></textarea>';
 
     const ta = document.getElementById("tf-edit-md");
-    if (ta) ta.value = buildMarkdown();
+    if (!ta) return;
+    const md = buildMarkdown();
+    ta.value = md;
+    const offsets = sectionOffsets(md);
+    focusMdEditorAt(ta, offsets[tfActiveIdx] != null ? offsets[tfActiveIdx] : 0);
+  }
+
+  // 各分类标题行在 Markdown 中的字符偏移，顺序与 tfData.sections 一致
+  function sectionOffsets(md) {
+    const offsets = [];
+    let pos = 0;
+    String(md).split("\n").forEach(function (line) {
+      const t = line.trim();
+      if (/^##\s+/.test(t) && t.replace(/^##\s+/, "").trim() !== "核心口诀") offsets.push(pos);
+      pos += line.length + 1;
+    });
+    return offsets;
+  }
+
+  function sectionIndexAtCaret(ta, md) {
+    const caret = ta.selectionStart || 0;
+    const offsets = sectionOffsets(md);
+    let idx = 0;
+    offsets.forEach(function (off, i) { if (off <= caret) idx = i; });
+    return idx;
+  }
+
+  function focusMdEditorAt(ta, pos) {
+    ta.focus({ preventScroll: true });
+    ta.setSelectionRange(pos, pos);
+    if (!pos || !ta.clientHeight) return;
+
+    // 规则条目多为长句会软换行，按逻辑行号乘行高会算错；截断测量真实内容高度
+    const full = ta.value;
+    ta.value = full.slice(0, pos) + "X";
+    const measured = ta.scrollHeight;
+    ta.value = full;
+    ta.setSelectionRange(pos, pos);
+
+    const cs = window.getComputedStyle(ta);
+    const lineHeight = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.9;
+    const padBottom = parseFloat(cs.paddingBottom) || 0;
+    ta.scrollTop = Math.max(0, measured - padBottom - lineHeight * 2);
   }
 
   function saveEdit() {
     const ta = document.getElementById("tf-edit-md");
     if (!ta) return;
-    const parsed = parseMarkdown(ta.value);
+    const md = ta.value;
+    const parsed = parseMarkdown(md);
     if (!parsed.sections.length) {
       window.alert("解析失败：未找到任何以 “## ” 开头的分类标题，请检查 Markdown 格式后再保存。");
       return;
     }
+    const caretIdx = sectionIndexAtCaret(ta, md);
     tfData = parsed;
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(tfData)); } catch (e) {}
     tfEditing = false;
-    tfActiveIdx = 0;
+    tfActiveIdx = Math.min(caretIdx, parsed.sections.length - 1);
     render();
   }
 
