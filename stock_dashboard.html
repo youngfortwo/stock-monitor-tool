@@ -1223,114 +1223,30 @@ tr.zt-expand-row > td {
   line-height: 1.7;
   resize: vertical;
 }
-.tf-edit-section {
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  padding: 14px;
-  margin-bottom: 14px;
-}
-.tf-edit-section-head {
-  display: flex;
-  gap: 8px;
-  align-items: center;
+.tf-md-hint {
+  background: #f8fbff;
+  border: 1px solid #e8edf4;
+  border-radius: 8px;
+  padding: 10px 12px;
   margin-bottom: 10px;
-  flex-wrap: wrap;
+  font-size: 12px;
+  color: #657188;
+  line-height: 2;
 }
-.tf-edit-icon {
-  width: 56px;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 15px;
-  background: #fff;
-  color: #172033;
-  box-sizing: border-box;
-}
-.tf-edit-title {
-  flex: 1;
-  min-width: 140px;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 15px;
-  font-weight: 700;
-  color: #172033;
-  background: #fff;
-  box-sizing: border-box;
-}
-.tf-edit-tone {
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 14px;
-  color: #172033;
-  background: #fff;
-}
-.tf-edit-desc {
-  width: 100%;
-  box-sizing: border-box;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 13px;
-  color: #172033;
-  background: #fff;
-  margin-bottom: 10px;
-}
-.tf-edit-rule {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 8px;
-  align-items: flex-start;
-}
-.tf-edit-rule-text {
-  flex: 1;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 14px;
-  font-family: inherit;
-  color: #172033;
-  background: #fff;
-  line-height: 1.6;
-  resize: vertical;
-  box-sizing: border-box;
-}
-.tf-rule-del {
-  background: #fee2e2;
-  border: 1px solid #fecaca;
-  color: #991b1b;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  padding: 7px 12px;
-  white-space: nowrap;
-}
-.tf-rule-del:hover { background: #fecaca; }
-.tf-add-rule {
-  background: #f1f5f9;
-  border: 1px dashed #cbd5e1;
-  border-radius: 8px;
+.tf-md-hint code {
+  background: #eef2f7;
+  border-radius: 4px;
+  padding: 1px 5px;
   color: #334155;
-  cursor: pointer;
+  font-size: 12px;
+}
+.tf-md-editor {
+  min-height: 70vh;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 13px;
-  padding: 8px 14px;
-  margin-top: 4px;
+  line-height: 1.9;
+  tab-size: 2;
 }
-.tf-add-rule:hover { background: #e2e8f0; }
-.tf-add-section {
-  background: #e0e7ff;
-  border: 1px dashed #818cf8;
-  border-radius: 8px;
-  color: #3730a3;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 600;
-  padding: 10px 16px;
-  width: 100%;
-}
-.tf-add-section:hover { background: #c7d2fe; }
 
 </style>
 </head>
@@ -2005,7 +1921,7 @@ tr.zt-expand-row > td {
       <button type="button" class="tf-btn" id="tf-cancel-btn" style="display:none;">取消</button>
     </div>
   </div>
-  <div class="muted" style="margin-bottom: 12px;">完整交易系统：选股 · 择时 · 仓位 · 风控 · 反馈。点击下方分类标签切换查看，核心口诀常驻顶部。可编辑并导出为 Markdown。</div>
+  <div class="muted" style="margin-bottom: 12px;">完整交易系统：选股 · 择时 · 仓位 · 风控 · 反馈。点击下方分类标签切换查看，核心口诀常驻顶部。点击“编辑”进入全文 Markdown 编辑，格式与导出的 .md 文件完全一致。</div>
   <div class="tf-motto" id="tf-motto"></div>
   <div class="tf-tabs" id="tf-tabs"></div>
   <div id="tf-content"></div>
@@ -5905,6 +5821,8 @@ function renderIndStocks() {
     const tabs = document.getElementById("tf-tabs");
     if (!motto || !tabs) return;
     if (tfActiveIdx >= tfData.sections.length) tfActiveIdx = 0;
+    motto.style.display = "";
+    tabs.style.display = "";
     motto.innerHTML = '<div class="tf-motto-title">核心口诀</div>' + escapeHtml(tfData.motto) +
       '<span class="tf-motto-cycle">' + escapeHtml(tfData.cycle) + "</span>";
     tabs.innerHTML = tfData.sections.map(function (s, i) {
@@ -5913,75 +5831,41 @@ function renderIndStocks() {
     renderSection(tfActiveIdx);
   }
 
-  function toneOptions(cur) {
-    const opts = [["default", "中性"], ["buy", "买入"], ["sell", "卖出"], ["risk", "风险"]];
-    return opts.map(function (o) {
-      return '<option value="' + o[0] + '"' + (o[0] === (cur || "default") ? " selected" : "") + ">" + o[1] + "</option>";
-    }).join("");
-  }
-
   function renderEdit() {
     const motto = document.getElementById("tf-motto");
     const tabs = document.getElementById("tf-tabs");
     const content = document.getElementById("tf-content");
     if (!motto || !tabs || !content) return;
 
-    motto.innerHTML =
-      '<div class="tf-edit-label">核心口诀</div>' +
-      '<textarea class="tf-edit-textarea" id="tf-edit-motto">' + escapeHtml(tfData.motto) + '</textarea>' +
-      '<div class="tf-edit-label">量价周期</div>' +
-      '<textarea class="tf-edit-textarea" id="tf-edit-cycle">' + escapeHtml(tfData.cycle) + '</textarea>';
+    motto.style.display = "none";
+    tabs.style.display = "none";
 
-    tabs.innerHTML = "";
+    content.innerHTML =
+      '<div class="tf-md-hint">' +
+        '全文 Markdown 编辑，保存时按下列格式解析：' +
+        '<code>## 核心口诀</code> 段落为口诀，<code>**量价周期**：…</code> 为量价周期；' +
+        '<code>## 🎯 分类名</code> 新建分类（标题前可加 emoji 图标），' +
+        '<code>&lt;!-- tone:buy|sell|risk --&gt;</code> 指定分类配色，' +
+        '<code>&gt; 说明</code> 为分类说明，<code>1. 规则</code> 为规则条目，缩进行并入上一条规则。' +
+      '</div>' +
+      '<textarea class="tf-edit-textarea tf-md-editor" id="tf-edit-md" spellcheck="false"></textarea>';
 
-    const sections = tfData.sections.map(function (s, si) {
-      const rules = s.items.map(function (it, ri) {
-        return '<div class="tf-edit-rule">' +
-          '<textarea class="tf-edit-rule-text">' + escapeHtml(it) + '</textarea>' +
-          '<button type="button" class="tf-rule-del" data-del-rule="' + ri + '">删除</button>' +
-          '</div>';
-      }).join("");
-      return '<div class="tf-edit-section" data-section="' + si + '">' +
-        '<div class="tf-edit-section-head">' +
-          '<input class="tf-edit-icon" value="' + escapeHtml(s.icon) + '" placeholder="图标" title="图标 emoji">' +
-          '<input class="tf-edit-title" value="' + escapeHtml(s.title) + '" placeholder="分类名称">' +
-          '<select class="tf-edit-tone">' + toneOptions(s.tone) + '</select>' +
-          '<button type="button" class="tf-rule-del" data-del-section="' + si + '">删除分类</button>' +
-        '</div>' +
-        '<input class="tf-edit-desc" value="' + escapeHtml(s.desc || "") + '" placeholder="说明（可选）">' +
-        '<div class="tf-edit-rules">' + rules + '</div>' +
-        '<button type="button" class="tf-add-rule" data-add-rule="' + si + '">+ 添加规则</button>' +
-        '</div>';
-    }).join("");
-
-    content.innerHTML = sections + '<button type="button" class="tf-add-section" id="tf-add-section">+ 添加分类</button>';
-  }
-
-  function collectEdit() {
-    const mottoEl = document.getElementById("tf-edit-motto");
-    const cycleEl = document.getElementById("tf-edit-cycle");
-    const data = {
-      motto: mottoEl ? mottoEl.value : tfData.motto,
-      cycle: cycleEl ? cycleEl.value : tfData.cycle,
-      sections: []
-    };
-    document.querySelectorAll("#tf-content .tf-edit-section").forEach(function (secEl) {
-      const title = secEl.querySelector(".tf-edit-title").value.trim();
-      if (!title) return;
-      const icon = secEl.querySelector(".tf-edit-icon").value.trim();
-      const tone = secEl.querySelector(".tf-edit-tone").value;
-      const desc = secEl.querySelector(".tf-edit-desc").value.trim();
-      const items = [];
-      secEl.querySelectorAll(".tf-edit-rule-text").forEach(function (ta) { items.push(ta.value); });
-      data.sections.push({ title: title, icon: icon, tone: tone, desc: desc, items: items });
-    });
-    return data;
+    const ta = document.getElementById("tf-edit-md");
+    if (ta) ta.value = buildMarkdown();
   }
 
   function saveEdit() {
-    tfData = collectEdit();
+    const ta = document.getElementById("tf-edit-md");
+    if (!ta) return;
+    const parsed = parseMarkdown(ta.value);
+    if (!parsed.sections.length) {
+      window.alert("解析失败：未找到任何以 “## ” 开头的分类标题，请检查 Markdown 格式后再保存。");
+      return;
+    }
+    tfData = parsed;
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(tfData)); } catch (e) {}
     tfEditing = false;
+    tfActiveIdx = 0;
     render();
   }
 
@@ -6003,8 +5887,9 @@ function renderIndStocks() {
     const d = tfData;
     const lines = ["# 交易框架", "", "## 核心口诀", d.motto, "", "**量价周期**：" + d.cycle, ""];
     d.sections.forEach(function (s) {
-      lines.push("## " + s.title);
-      if (s.desc) lines.push("> " + s.desc);
+      lines.push("## " + (s.icon ? s.icon + " " : "") + s.title);
+      if (s.tone && s.tone !== "default") lines.push("<!-- tone:" + s.tone + " -->");
+      if (s.desc) lines.push("> " + String(s.desc).replace(/\n/g, " "));
       s.items.forEach(function (it, i) {
         const parts = String(it).split("\n");
         lines.push((i + 1) + ". " + parts[0]);
@@ -6013,6 +5898,72 @@ function renderIndStocks() {
       lines.push("");
     });
     return lines.join("\n");
+  }
+
+  // 标题形如 "🎯 执行总纲"：前缀既非字母数字也非汉字时视为图标
+  function splitIcon(text) {
+    const t = String(text).trim();
+    const sp = t.indexOf(" ");
+    if (sp > 0) {
+      const head = t.slice(0, sp);
+      if (head.length <= 4 && !/[\w\u4e00-\u9fa5]/.test(head)) {
+        return { icon: head, title: t.slice(sp + 1).trim() };
+      }
+    }
+    return { icon: "", title: t };
+  }
+
+  function parseMarkdown(md) {
+    const out = { motto: "", cycle: "", sections: [] };
+    const lines = String(md).replace(/\r\n?/g, "\n").split("\n");
+    const mottoBuf = [];
+    let cur = null;
+    let inMotto = false;
+
+    lines.forEach(function (raw) {
+      const line = raw.trim();
+
+      if (/^#\s+/.test(line)) { inMotto = false; return; }
+
+      if (/^##\s+/.test(line)) {
+        const heading = line.replace(/^##\s+/, "").trim();
+        if (heading === "核心口诀") { inMotto = true; cur = null; return; }
+        inMotto = false;
+        const parts = splitIcon(heading);
+        cur = { title: parts.title, icon: parts.icon, tone: "default", desc: "", items: [] };
+        out.sections.push(cur);
+        return;
+      }
+
+      const toneM = line.match(/^<!--\s*tone\s*:\s*([a-zA-Z]+)\s*-->$/);
+      if (toneM) { if (cur) cur.tone = toneM[1].toLowerCase(); return; }
+
+      const cycleM = line.match(/^\*\*量价周期\*\*[：:]\s*(.*)$/);
+      if (cycleM) { out.cycle = cycleM[1].trim(); inMotto = false; return; }
+
+      if (inMotto) { if (line) mottoBuf.push(line); return; }
+      if (!cur || !line) return;
+
+      if (/^>\s?/.test(line)) {
+        const d = line.replace(/^>\s?/, "").trim();
+        cur.desc = cur.desc ? cur.desc + " " + d : d;
+        return;
+      }
+
+      const itemM = line.match(/^(?:\d+[.)]|[-*+])\s+(.*)$/);
+      if (itemM) { cur.items.push(itemM[1].trim()); return; }
+
+      // 非列表行：缩进续行并入上一条规则，规则前的散行并入说明
+      if (cur.items.length) cur.items[cur.items.length - 1] += "\n" + line;
+      else cur.desc = cur.desc ? cur.desc + " " + line : line;
+    });
+
+    out.motto = mottoBuf.join("\n");
+    out.sections.forEach(function (s) {
+      s.items = s.items.filter(function (it) { return it.trim() !== ""; });
+    });
+    out.sections = out.sections.filter(function (s) { return s.title; });
+    return out;
   }
 
   function downloadFile(filename, content) {
@@ -6048,7 +5999,6 @@ function renderIndStocks() {
 
   function init() {
     const tabs = document.getElementById("tf-tabs");
-    const content = document.getElementById("tf-content");
     const editBtn = document.getElementById("tf-edit-btn");
     const exportBtn = document.getElementById("tf-export-btn");
     const resetBtn = document.getElementById("tf-reset-btn");
@@ -6063,37 +6013,6 @@ function renderIndStocks() {
       tabs.querySelectorAll(".tf-tab").forEach(function (b) { b.classList.remove("active"); });
       btn.classList.add("active");
       renderSection(tfActiveIdx);
-    });
-
-    if (content) content.addEventListener("click", function (e) {
-      if (!tfEditing) return;
-      const addRule = e.target.closest("[data-add-rule]");
-      const delRule = e.target.closest("[data-del-rule]");
-      const delSection = e.target.closest("[data-del-section]");
-      const addSection = e.target.closest("#tf-add-section");
-      if (addRule) {
-        tfData = collectEdit();
-        const si = Number(addRule.dataset.addRule);
-        if (tfData.sections[si]) tfData.sections[si].items.push("");
-        renderEdit();
-      } else if (delRule) {
-        tfData = collectEdit();
-        const secEl = delRule.closest(".tf-edit-section");
-        const si = Number(secEl.dataset.section);
-        const ri = Number(delRule.dataset.delRule);
-        if (tfData.sections[si]) tfData.sections[si].items.splice(ri, 1);
-        renderEdit();
-      } else if (delSection) {
-        if (!window.confirm("确定删除该分类？")) return;
-        tfData = collectEdit();
-        const si = Number(delSection.dataset.delSection);
-        tfData.sections.splice(si, 1);
-        renderEdit();
-      } else if (addSection) {
-        tfData = collectEdit();
-        tfData.sections.push({ title: "新分类", icon: "📌", tone: "default", desc: "", items: [""] });
-        renderEdit();
-      }
     });
 
     if (editBtn) editBtn.addEventListener("click", function () { tfEditing = true; render(); });
