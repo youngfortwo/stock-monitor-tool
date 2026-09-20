@@ -43,7 +43,12 @@ os.environ.pop("HTTP_PROXY", None)
 os.environ.pop("HTTPS_PROXY", None)
 os.environ.pop("http_proxy", None)
 os.environ.pop("https_proxy", None)
-os.environ.pop("REQUESTS_CA_BUNDLE", None)
+# REQUESTS_CA_BUNDLE 只在证书包不存在时移除。企业环境用它指向含内网根证书的包，
+# 无条件移除会让经中间人代理的 HTTPS 全部 CERTIFICATE_VERIFY_FAILED——stock_server
+# 导入本模块后，服务内所有 akshare 取数都会因此失败。
+_ca_bundle = os.environ.get("REQUESTS_CA_BUNDLE")
+if _ca_bundle and not os.path.exists(_ca_bundle):
+    os.environ.pop("REQUESTS_CA_BUNDLE", None)
 
 
 def parse_args() -> argparse.Namespace:

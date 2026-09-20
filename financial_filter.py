@@ -13,7 +13,10 @@ os.environ.pop("HTTP_PROXY", None)
 os.environ.pop("HTTPS_PROXY", None)
 os.environ.pop("http_proxy", None)
 os.environ.pop("https_proxy", None)
-os.environ.pop("REQUESTS_CA_BUNDLE", None)
+# 仅当证书包文件不存在时才移除，理由见 sepa_stage2_scanner 同处注释
+_ca_bundle = os.environ.get("REQUESTS_CA_BUNDLE")
+if _ca_bundle and not os.path.exists(_ca_bundle):
+    os.environ.pop("REQUESTS_CA_BUNDLE", None)
 
 CACHE_FILE = Path("financial_cache.json")
 

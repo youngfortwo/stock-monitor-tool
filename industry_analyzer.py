@@ -38,8 +38,12 @@ _session: requests.Session | None = None
 
 
 def _clear_proxy_env():
-    for key in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "REQUESTS_CA_BUNDLE"):
+    for key in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
         os.environ.pop(key, None)
+    # REQUESTS_CA_BUNDLE 仅在证书包文件不存在时移除，理由见 sepa_stage2_scanner 同处注释
+    ca_bundle = os.environ.get("REQUESTS_CA_BUNDLE")
+    if ca_bundle and not os.path.exists(ca_bundle):
+        os.environ.pop("REQUESTS_CA_BUNDLE", None)
 
 
 # ─── cninfo 认证 ─────────────────────────────────────────────────────────────
