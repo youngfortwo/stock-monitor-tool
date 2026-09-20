@@ -45,6 +45,28 @@ _CYCLES: dict[str, dict[str, Any]] = {
             "peak": "被动补库存（滞胀）",
             "contraction": "主动去库存（衰退）",
         },
+        "phase_detail": {
+            "recovery": {
+                "desc": "需求回暖但企业尚未加产，库存被动消耗，价格开始企稳回升。",
+                "implication": "周期资产最佳布局窗口：上游资源、工业品率先反应。",
+                "risk": "低",
+            },
+            "expansion": {
+                "desc": "需求确认，企业主动加产补库，价格与利润同步上行。",
+                "implication": "盈利最强阶段，周期股/资源股表现最好，但已进入中后段。",
+                "risk": "中",
+            },
+            "peak": {
+                "desc": "需求转弱而库存仍在累积，价格见顶回落，利润受挤压。",
+                "implication": "减配周期股，警惕业绩下修；防御性行业相对占优。",
+                "risk": "高",
+            },
+            "contraction": {
+                "desc": "需求低迷，企业主动砍产降库，价格与利润同步下行。",
+                "implication": "周期底部酝酿期，等待价格企稳与需求回暖的确认信号。",
+                "risk": "中高（但底部机会在酝酿）",
+            },
+        },
     },
     "juglar": {
         "name": "朱格拉周期",
@@ -64,6 +86,28 @@ _CYCLES: dict[str, dict[str, Any]] = {
             "expansion": "投资扩张",
             "peak": "投资见顶",
             "contraction": "投资收缩",
+        },
+        "phase_detail": {
+            "recovery": {
+                "desc": "产能利用率回升，企业开始重启资本开支，设备订单见到改善。",
+                "implication": "设备制造、工业自动化、工程机械进入景气上行早期。",
+                "risk": "低",
+            },
+            "expansion": {
+                "desc": "资本开支全面铺开，中游设备订单饱满，产能建设加速。",
+                "implication": "设备与资本品景气高点，但新增产能已在路上。",
+                "risk": "中",
+            },
+            "peak": {
+                "desc": "前期新增产能陆续投产，订单增速回落，产能利用率见顶。",
+                "implication": "警惕产能过剩与价格战，减配重资产、高资本开支行业。",
+                "risk": "高",
+            },
+            "contraction": {
+                "desc": "产能过剩，资本开支收缩，设备更新推迟，投资增速低迷。",
+                "implication": "等待产能出清；出清越彻底，下一轮设备周期弹性越大。",
+                "risk": "中高",
+            },
         },
     },
     "kuznets": {
@@ -85,8 +129,33 @@ _CYCLES: dict[str, dict[str, Any]] = {
             "peak": "地产见顶",
             "contraction": "地产下行",
         },
+        "phase_detail": {
+            "recovery": {
+                "desc": "销售与新开工回暖，库存去化加快，景气指数自低位回升。",
+                "implication": "地产链（建材、家居、工程机械）需求改善。",
+                "risk": "低",
+            },
+            "expansion": {
+                "desc": "投资与新开工高增，土地与信用扩张，景气处于高位。",
+                "implication": "地产链景气高位，但对利率与政策收紧最敏感。",
+                "risk": "中",
+            },
+            "peak": {
+                "desc": "销售转弱而投资惯性仍在，库存开始累积，景气自高位回落。",
+                "implication": "减配地产链，关注房企现金流与信用风险。",
+                "risk": "高",
+            },
+            "contraction": {
+                "desc": "销售与投资双降，去库存漫长，景气持续低迷。",
+                "implication": "地产链承压；该阶段跨度可达数年，需等政策与人口两端的转向信号。",
+                "risk": "高",
+            },
+        },
     },
 }
+
+# 四阶段的循环顺序，用于展示"下一阶段"
+_PHASE_ORDER = ["recovery", "expansion", "peak", "contraction"]
 
 _MIN_CYCLES_FOR_CONFIDENCE = 3
 
@@ -318,9 +387,25 @@ def analyze_cycle(cycle_key: str, series: list[tuple[str, float]],
         elif cur < prev:
             direction = "下行"
     phase_key, phase_name = _classify_phase(pct, direction, cfg["phase_names"])
+    detail = cfg["phase_detail"][phase_key]
+    nxt = _PHASE_ORDER[(_PHASE_ORDER.index(phase_key) + 1) % len(_PHASE_ORDER)]
     result.update(percentile=pct, direction=direction,
                   direction_lookback_months=look,
-                  phase_key=phase_key, phase_name=phase_name)
+                  phase_key=phase_key, phase_name=phase_name,
+                  phase_desc=detail["desc"],
+                  phase_implication=detail["implication"],
+                  phase_risk=detail["risk"],
+                  next_phase_name=cfg["phase_names"][nxt])
+    # 四阶段序列（含当前标记），供前端画阶段轮盘
+    result["phase_sequence"] = [
+        {
+            "key": k,
+            "name": cfg["phase_names"][k],
+            "desc": cfg["phase_detail"][k]["desc"],
+            "is_current": k == phase_key,
+        }
+        for k in _PHASE_ORDER
+    ]
 
     # ── 距上一个波谷的月数 / 在实测周期中的位置 ──
     if troughs:
@@ -349,12 +434,13 @@ def analyze_cycle(cycle_key: str, series: list[tuple[str, float]],
             "agrees": c_dir == direction,
         }
 
-    # ── 近 N 期序列（前端画走势用，含平滑值）──
-    tail = 120 if cycle_key != "kuznets" else 240
+    # ── 完整历史序列（前端画走势用，含平滑值）──
+    # 不做截断：截断会把早期波谷挡在窗口外，前端按月份定位波谷竖线时找不到对应
+    # 位置，检出的周期在图上看不见——这正是"周期不够长"的观感来源。
     result["history"] = {
-        "months": months[-tail:],
-        "values": values[-tail:],
-        "smoothed": [None if v is None else round(v, 3) for v in smoothed[-tail:]],
+        "months": months,
+        "values": values,
+        "smoothed": [None if v is None else round(v, 3) for v in smoothed],
     }
     return result
 

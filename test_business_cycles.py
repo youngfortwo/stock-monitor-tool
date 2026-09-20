@@ -132,6 +132,40 @@ assert r10["corroborator"]["agrees"] is True, r10["corroborator"]
 print(f"用例10 佐证指标: 方向={r10['corroborator']['direction']} "
       f"一致={r10['corroborator']['agrees']}: PASS")
 
+# ── 用例12：阶段含义字段齐备，且四阶段序列恰有一个当前项 ──
+r12 = analyze_cycle("kitchin", sine_series(40, 200))
+for k in ["phase_desc", "phase_implication", "phase_risk", "next_phase_name",
+          "phase_sequence"]:
+    assert r12.get(k), f"缺少阶段说明字段 {k}"
+seq = r12["phase_sequence"]
+assert len(seq) == 4, seq
+cur = [p for p in seq if p["is_current"]]
+assert len(cur) == 1, cur
+assert cur[0]["name"] == r12["phase_name"]
+assert all(p.get("desc") for p in seq), "每个阶段都要有说明文案"
+# 下一阶段必须是循环里的后一项
+order = [p["key"] for p in seq]
+nxt_key = order[(order.index(cur[0]["key"]) + 1) % 4]
+assert r12["next_phase_name"] == seq[order.index(nxt_key)]["name"]
+print(f"用例12 阶段含义与序列: 当前={cur[0]['name']} 下一={r12['next_phase_name']} "
+      f"风险={r12['phase_risk']}: PASS")
+
+# 三个周期的四阶段文案都要配齐，避免新增周期时漏写
+for _ck, _cfg in _CYCLES.items():
+    assert set(_cfg["phase_detail"]) == set(_cfg["phase_names"]), _ck
+    for _pk, _pd in _cfg["phase_detail"].items():
+        assert _pd.get("desc") and _pd.get("implication") and _pd.get("risk"), f"{_ck}/{_pk}"
+print("用例12b 三周期文案齐备: PASS")
+
+# ── 用例13：历史序列不截断，检出的波谷必须都能在图上定位 ──
+r13 = analyze_cycle("kitchin", sine_series(40, 248))
+hm = r13["history"]["months"]
+assert len(hm) == 248, f"历史被截断到 {len(hm)} 期"
+assert len(r13["history"]["values"]) == len(r13["history"]["smoothed"]) == 248
+missing = [t for t in r13["troughs"] if t not in hm]
+assert not missing, f"波谷 {missing} 落在图表窗口外，竖线将无法绘制"
+print(f"用例13 完整历史与波谷可定位: {len(hm)} 期、{len(r13['troughs'])} 个波谷全部在窗口内: PASS")
+
 # ── 用例11：_with_retry 对"成功但返回空"也要重试 ──
 # 限流时 akshare 返回空 DataFrame 而不抛异常，只对异常重试会导致静默降级
 import business_cycle_analyzer as _bc
