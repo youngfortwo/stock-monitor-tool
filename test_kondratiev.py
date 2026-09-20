@@ -69,6 +69,28 @@ all_none = _score_all_phases({"spread": None, "credit": None, "pmi": None, "m1m2
 assert all(r["score"] is None for r in all_none)
 print("用例6 缺数据降级: PASS")
 
+# ── 用例6b：单指标可用时不得给出高置信度 ──
+# 单一指标必然命中某个阶段的区间，排名无意义，须标记为"指标不足"
+import kondratiev_analyzer as _ka
+_orig = _ka._fetch_all_series
+try:
+    _ka._fetch_all_series = lambda: {
+        "spread": [], "pmi": [], "m1m2": [],
+        "credit": [(f"20{y:02d}-{m:02d}", float((y * 12 + m) % 17 - 8))
+                   for y in range(17, 27) for m in range(1, 13)],
+    }
+    r6b = _ka.analyze_kondratiev()
+    a6b = r6b["macro_alignment"]
+    print(f"用例6b 单指标: 可用={a6b['indicators_available']}/{a6b['indicators_total']} "
+          f"一致性={a6b['agreement']} 置信度={a6b['confidence']}")
+    assert a6b["indicators_available"] == 1
+    assert a6b["agreement"] == "指标不足"
+    assert a6b["confidence"] == "低"
+    assert a6b.get("data_warning"), "指标缺失时必须给出警告文案"
+    print("用例6b 单指标不得高置信: PASS")
+finally:
+    _ka._fetch_all_series = _orig
+
 # ── 用例7：区间不再像旧版那样三阶段重叠 ──
 # 对 spread 这一主判别指标，春/夏 与 秋/冬 的期望区间应基本分离
 spring_b = _PHASE_INDICATOR_PROFILE["spring"]["spread"]

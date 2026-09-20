@@ -1222,9 +1222,10 @@ from sepa_stage2_scanner import evaluate_stage2, fetch_history, load_industry_ov
 from sepa_stage1_scanner import evaluate_stage1
 from technical_analyzer import analyze_technical
 from financial_filter import load_cache
-from kondratiev_analyzer import analyze_kondratiev
 
 # 康波周期缓存：每日更新一次（阶段划分按年，无需高频刷新）
+# analyze_kondratiev 在 handler 内延迟导入：模块级导入会让 kondratiev_analyzer.py
+# 缺失或语法错误直接拖垮整个服务，与本文件对 market_breadth 等模块的处理保持一致。
 _KONDRATIEV_CACHE = None
 _KONDRATIEV_CACHE_DATE = None
 
@@ -2682,6 +2683,15 @@ class StockHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/investor/update":
             self.handle_investor_update(parsed.query)
             return
+        if parsed.path.startswith("/api/"):
+            # 未知 /api/ 路径若落到静态文件处理，会返回 404 的 HTML，前端 JSON.parse
+            # 只报 "Unexpected token '<'"，无法看出真正原因（通常是服务端仍在跑旧版本）。
+            self.write_json(
+                {"error": f"未知接口 {parsed.path}。服务端可能仍在运行旧版本代码，"
+                          f"请重启 stock_server.py 后重试"},
+                status=404,
+            )
+            return
         super().do_GET()
 
     def do_POST(self) -> None:
@@ -3098,6 +3108,16 @@ class StockHandler(SimpleHTTPRequestHandler):
         today = _dt.date.today().isoformat()
         if not force and _KONDRATIEV_CACHE is not None and _KONDRATIEV_CACHE_DATE == today:
             self.write_json(_KONDRATIEV_CACHE)
+            return
+        try:
+            from kondratiev_analyzer import analyze_kondratiev
+        except Exception as exc:
+            traceback.print_exc()
+            self.write_json(
+                {"error": f"kondratiev_analyzer 模块加载失败：{exc}。"
+                          f"请确认 kondratiev_analyzer.py 已部署到服务端同目录"},
+                status=500,
+            )
             return
         try:
             result = analyze_kondratiev()

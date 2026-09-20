@@ -4119,7 +4119,12 @@ function renderKondratiev(data) {
   const agColor = align.agreement === "一致" ? "#22c55e" : align.agreement === "接近" ? "#f59e0b" : "#ef4444";
   h += `<span style="font-size:12px;">日历定位「${align.calendar_phase || "-"}」 vs 数据最像「${align.data_phase || "-"}」：`;
   h += `<strong style="color:${agColor};">${align.agreement || "-"}</strong>`;
-  h += `（置信度 ${align.confidence || "-"}）</span></div>`;
+  h += `（置信度 ${align.confidence || "-"}`;
+  if (align.indicators_available != null) h += `，${align.indicators_available}/${align.indicators_total} 指标可用`;
+  h += `）</span></div>`;
+  if (align.data_warning) {
+    h += `<div style="background:#fef3c7;border:1px solid #fde68a;color:#92400e;border-radius:6px;padding:8px 10px;font-size:12px;margin-bottom:10px;">${align.data_warning}</div>`;
+  }
   if (ranking.length) {
     h += `<table style="width:100%;font-size:12px;"><thead><tr>
       <th>排名</th><th>阶段</th><th>综合吻合分</th><th>各指标分位 / 期望区间</th>

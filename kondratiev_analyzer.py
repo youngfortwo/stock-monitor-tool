@@ -603,14 +603,22 @@ def analyze_kondratiev(as_of: dt.date | None = None) -> dict[str, Any]:
     if data_phase and len(scored) >= 2:
         margin = round(scored[0]["score"] - scored[1]["score"], 1)
 
+    # 可用指标数量决定结论的可信程度：判别力来自四个指标的交叉印证，
+    # 单一指标就能把某个阶段推到第一名（区间必然命中其中之一），此时的排名没有意义。
+    available = sum(1 for v in indicators["percentiles"].values() if v is not None)
+    total_inds = len(_PHASE_INDICATOR_PROFILE["spring"])
+
     if not scored:
         agreement, confidence = "无数据", "无数据"
+    elif available < 2:
+        agreement = "指标不足"
+        confidence = "低"
     elif calendar_rank == 1:
         agreement = "一致"
-        confidence = "高" if (margin or 0) >= 10 else "中"
+        confidence = "高" if (margin or 0) >= 10 and available == total_inds else "中"
     elif calendar_rank == 2:
         agreement = "接近"
-        confidence = "中"
+        confidence = "中" if available >= 3 else "低"
     else:
         agreement = "矛盾"
         confidence = "低"
@@ -625,8 +633,17 @@ def analyze_kondratiev(as_of: dt.date | None = None) -> dict[str, Any]:
         "data_phase_key": data_phase["phase_key"] if data_phase else None,
         "data_phase_score": data_phase["score"] if data_phase else None,
         "top_margin": margin,
+        "indicators_available": available,
+        "indicators_total": total_inds,
         "method": "各指标取自身历史分位，对四阶段并行打分后排名；日历定位为主判据，本表为独立验证",
     }
+    if available < total_inds:
+        missing = [_INDICATOR_LABELS[k] for k, v in indicators["percentiles"].items()
+                   if v is None]
+        alignment["data_warning"] = (
+            f"仅 {available}/{total_inds} 个指标取到数据（缺失：{'、'.join(missing)}），"
+            f"排名与命中率仅供参考，请点刷新重试"
+        )
 
     # 历史时间轴（供前端渲染）
     timeline = []
