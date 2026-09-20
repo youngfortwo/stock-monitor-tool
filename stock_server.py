@@ -1233,6 +1233,10 @@ _KONDRATIEV_CACHE_DATE = None
 _BIZCYCLE_CACHE = None
 _BIZCYCLE_CACHE_DATE = None
 
+# 人口结构（新生儿/老龄化）缓存：年度数据，按日缓存即可
+_DEMOGRAPHICS_CACHE = None
+_DEMOGRAPHICS_CACHE_DATE = None
+
 _RPS_CACHE: dict[str, float] = {}
 _RPS_CACHE_TS = 0.0
 
@@ -2654,6 +2658,9 @@ class StockHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/business_cycles":
             self.handle_business_cycles(parsed.query)
             return
+        if parsed.path == "/api/demographics":
+            self.handle_demographics(parsed.query)
+            return
         if parsed.path == "/api/equity_bond_spread":
             self.handle_equity_bond_spread(parsed.query)
             return
@@ -3159,6 +3166,40 @@ class StockHandler(SimpleHTTPRequestHandler):
             result = analyze_business_cycles()
             _BIZCYCLE_CACHE = result
             _BIZCYCLE_CACHE_DATE = today
+            self.write_json(result)
+        except Exception as exc:
+            traceback.print_exc()
+            self.write_json({"error": str(exc)}, status=500)
+
+    def handle_demographics(self, query: str = "") -> None:
+        """GET /api/demographics：中国新生儿统计 + 老龄化统计。"""
+        global _DEMOGRAPHICS_CACHE, _DEMOGRAPHICS_CACHE_DATE
+        import datetime as _dt
+        params = parse_qs(query)
+        force = params.get("force", ["false"])[0].lower() == "true"
+        try:
+            years = max(5, min(60, int(params.get("years", ["20"])[0])))
+        except ValueError:
+            years = 20
+        today = _dt.date.today().isoformat()
+        cache_key = f"{today}:{years}"
+        if not force and _DEMOGRAPHICS_CACHE is not None and _DEMOGRAPHICS_CACHE_DATE == cache_key:
+            self.write_json(_DEMOGRAPHICS_CACHE)
+            return
+        try:
+            from demographics_analyzer import analyze_demographics
+        except Exception as exc:
+            traceback.print_exc()
+            self.write_json(
+                {"error": f"demographics_analyzer 模块加载失败：{exc}。"
+                          f"请确认 demographics_analyzer.py 已部署到服务端同目录"},
+                status=500,
+            )
+            return
+        try:
+            result = analyze_demographics(years=years, force=force)
+            _DEMOGRAPHICS_CACHE = result
+            _DEMOGRAPHICS_CACHE_DATE = cache_key
             self.write_json(result)
         except Exception as exc:
             traceback.print_exc()

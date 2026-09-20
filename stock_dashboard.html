@@ -1268,6 +1268,8 @@ tr.zt-expand-row > td {
     <li><a href="#kuznets"><span class="nav-icon">🏗️</span>库兹涅茨周期</a></li>
     <li><a href="#juglar"><span class="nav-icon">🏭</span>朱格拉周期</a></li>
     <li><a href="#kitchin"><span class="nav-icon">📦</span>基钦周期</a></li>
+    <li><a href="#births"><span class="nav-icon">👶</span>新生儿统计</a></li>
+    <li><a href="#aging"><span class="nav-icon">👴</span>老龄化统计</a></li>
   </ul>
   <div class="sidebar-divider"></div>
   <div class="sidebar-section-label">板块分析</div>
@@ -1620,6 +1622,38 @@ tr.zt-expand-row > td {
   </div>
 </section>
 </div><!-- /page-kitchin -->
+
+<!-- ===== 中国新生儿统计 ===== -->
+<div id="page-births" class="page">
+<section class="tool-panel" id="sec-births">
+  <h2>中国新生儿统计</h2>
+  <div class="muted" style="margin-bottom: 10px;">
+    近 20 年出生人口、出生率与总和生育率。出生人口以<b>国家统计局公布值</b>为主序列，
+    同时给出世界银行（联合国口径）推算值作对照，两者分歧的年份单独列出。
+    <button id="births-refresh-btn" type="button" class="btn-refresh" style="margin-left:10px;">刷新</button>
+    <span id="demo-update-time-births" class="muted" style="margin-left:10px;font-size:12px;"></span>
+  </div>
+  <div id="births-result">
+    <div class="muted" style="padding:12px;">加载中...</div>
+  </div>
+</section>
+</div><!-- /page-births -->
+
+<!-- ===== 中国老龄化统计 ===== -->
+<div id="page-aging" class="page">
+<section class="tool-panel" id="sec-aging">
+  <h2>中国老龄化统计</h2>
+  <div class="muted" style="margin-bottom: 10px;">
+    65 岁以上人口占比、老年抚养比与少儿占比，并按联合国通行门槛判定所处阶段
+    （7% 老龄化社会、14% 深度老龄化、20% 超老龄化）。数据源为世界银行（联合国口径）。
+    <button id="aging-refresh-btn" type="button" class="btn-refresh" style="margin-left:10px;">刷新</button>
+    <span id="demo-update-time-aging" class="muted" style="margin-left:10px;font-size:12px;"></span>
+  </div>
+  <div id="aging-result">
+    <div class="muted" style="padding:12px;">加载中...</div>
+  </div>
+</section>
+</div><!-- /page-aging -->
 
 <!-- ===== 个股综合分析 ===== -->
 <div id="page-analysis" class="page">
@@ -4528,6 +4562,269 @@ document.addEventListener("DOMContentLoaded", () => {
     btn.addEventListener("click", () => loadBizCycles(true));
   });
   loadBizCycles();
+});
+
+// ─── 人口结构（新生儿 / 老龄化）──────────────────────────────────
+// 两个页面共用一次 /api/demographics 取数，底层是同一批年度序列。
+async function loadDemographics(force = false) {
+  try {
+    const url = "/api/demographics" + (force ? "?force=true" : "");
+    const resp = await fetch(url, { cache: "no-store" });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    ["births", "aging"].forEach(k => {
+      const el = document.getElementById(`demo-update-time-${k}`);
+      if (el) el.textContent = `更新时间: ${data.generated_at || "-"}`;
+    });
+    renderBirths(data);
+    renderAging(data);
+  } catch (e) {
+    ["births", "aging"].forEach(k => {
+      const box = document.getElementById(`${k}-result`);
+      if (box) box.innerHTML = `<div class="muted" style="padding:12px;color:#c2410c;">加载失败: ${e.message}</div>`;
+    });
+  }
+}
+
+function renderBirths(data) {
+  const box = document.getElementById("births-result");
+  if (!box) return;
+  const b = data.births || {};
+  if (b.error) {
+    box.innerHTML = `<div class="muted" style="padding:12px;color:#c2410c;">${b.error}</div>`;
+    return;
+  }
+  const col = "#0ea5e9";
+  const signed = v => (v == null ? "-" : (v > 0 ? "+" : "") + v + "%");
+  let h = "";
+
+  h += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">`;
+
+  // 左：最新出生人口
+  h += `<div style="background:linear-gradient(135deg,#fff 0%,${col}11 100%);border:1px solid ${col}44;border-radius:12px;padding:20px;">`;
+  h += `<div style="font-size:13px;color:#657188;margin-bottom:4px;">${b.latest_year} 年出生人口（统计局口径）</div>`;
+  h += `<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px;">`;
+  h += `<span style="font-size:34px;font-weight:700;color:${col};">${b.latest_births_wan}</span>`;
+  h += `<span style="font-size:15px;color:#657188;">万人</span>`;
+  if (b.yoy_pct != null) {
+    const c = b.yoy_pct >= 0 ? "#c2410c" : "#12805c";
+    h += `<span style="font-size:14px;color:${c};font-weight:600;">同比 ${signed(b.yoy_pct)}</span>`;
+  }
+  h += `</div>`;
+  h += `<div style="font-size:12px;color:#475569;margin-bottom:12px;">出生率 ${b.latest_birth_rate ?? "-"}‰（${b.latest_birth_rate_year ?? "-"} 年）</div>`;
+  // 较峰值降幅进度条：条长代表当前相对峰值的水平
+  if (b.peak_births_wan) {
+    const pct = Math.max(0, Math.min(100, b.latest_births_wan / b.peak_births_wan * 100));
+    h += `<div><div style="display:flex;justify-content:space-between;font-size:11px;color:#657188;margin-bottom:4px;">`;
+    h += `<span>${b.peak_year} 年峰值 ${b.peak_births_wan} 万</span>`;
+    h += `<span>当前为峰值的 ${pct.toFixed(0)}%</span></div>`;
+    h += `<div style="background:#e2e8f0;border-radius:6px;height:10px;overflow:hidden;">`;
+    h += `<div style="background:${col};width:${pct}%;height:100%;border-radius:6px;"></div></div>`;
+    h += `<div style="font-size:11px;color:#657188;margin-top:4px;text-align:right;">较峰值 ${signed(b.from_peak_pct)}</div></div>`;
+  }
+  h += `</div>`;
+
+  // 右：生育率与区间极值
+  h += `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;">`;
+  if (b.latest_fertility != null) {
+    h += `<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">总和生育率</div>`;
+    h += `<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:6px;">`;
+    h += `<span style="font-size:26px;font-weight:700;color:#ef4444;">${b.latest_fertility}</span>`;
+    h += `<span class="muted" style="font-size:12px;">${b.latest_fertility_year} 年 · 世代更替水平 ${b.replacement_level}</span></div>`;
+    h += `<div style="font-size:12px;color:#475569;margin-bottom:14px;line-height:1.6;">`;
+    h += `仅为世代更替水平的 <strong>${(b.latest_fertility / b.replacement_level * 100).toFixed(0)}%</strong>`;
+    h += `（缺口 ${signed(b.fertility_gap_pct)}）。生育率长期低于 2.1 意味着人口将持续自然减少。</div>`;
+  }
+  h += `<table style="width:100%;font-size:12px;"><tbody>`;
+  h += `<tr><td class="muted" style="width:110px;">统计区间</td><td>${b.range}（${b.years} 年）</td></tr>`;
+  h += `<tr><td class="muted">区间峰值</td><td><strong>${b.peak_year}</strong> 年 ${b.peak_births_wan} 万</td></tr>`;
+  h += `<tr><td class="muted">区间谷值</td><td><strong>${b.trough_year}</strong> 年 ${b.trough_births_wan} 万</td></tr>`;
+  h += `</tbody></table>`;
+  h += `</div></div>`;
+
+  // 走势图 + 分歧表
+  h += `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">`;
+  h += `<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">出生人口走势（两口径对照）</div>`;
+  h += `<div id="birthschart"></div>`;
+  h += `<div class="muted" style="font-size:11px;margin-top:4px;">蓝线为统计局公布值，灰虚线为世界银行（联合国口径）按「出生率 × 总人口」推算值。</div>`;
+
+  if ((b.divergence || []).length) {
+    h += `<div style="font-size:13px;font-weight:600;color:#374151;margin:14px 0 6px;">两口径分歧年份（相差 ≥${b.divergence_threshold_pct}%）</div>`;
+    h += `<table style="width:100%;font-size:12px;"><thead><tr>`;
+    h += `<th>年份</th><th>统计局（万）</th><th>世界银行（万）</th><th>差异</th></tr></thead><tbody>`;
+    b.divergence.forEach(d => {
+      h += `<tr><td>${d.year}</td><td><strong>${d.nbs}</strong></td><td class="muted">${d.wb}</td>`;
+      h += `<td style="color:#c2410c;font-weight:600;">${signed(d.diff_pct)}</td></tr>`;
+    });
+    h += `</tbody></table>`;
+    h += `<div class="muted" style="font-size:11px;margin-top:6px;line-height:1.6;">`;
+    h += `联合国口径认为这些年份存在出生漏登，故高于统计局公布值。本页峰值、同比等结论均按统计局口径计算——`;
+    h += `若改用世行口径，近 20 年峰值会落在 2012 年而非 2016 年。</div>`;
+  }
+  if (b.nbs_stale) {
+    h += `<div style="background:#fef3c7;border:1px solid #fde68a;color:#92400e;border-radius:6px;padding:8px 10px;font-size:12px;margin-top:10px;">${b.nbs_stale}</div>`;
+  }
+  h += `<div class="muted" style="font-size:11px;margin-top:8px;line-height:1.6;">${data.source_note || ""}</div>`;
+  h += `</div>`;
+
+  box.innerHTML = h;
+  _drawDemoChart("birthschart", b.history.years, [
+    { name: "出生人口(统计局)", values: b.history.births_wan, color: col, width: 2 },
+    { name: "出生人口(世界银行)", values: b.history.births_wan_wb, color: "#94a3b8", width: 1.5, dash: "4,3" },
+  ], { valueSuffix: " 万" });
+}
+
+function renderAging(data) {
+  const box = document.getElementById("aging-result");
+  if (!box) return;
+  const a = data.aging || {};
+  if (a.error) {
+    box.innerHTML = `<div class="muted" style="padding:12px;color:#c2410c;">${a.error}</div>`;
+    return;
+  }
+  const st = a.stage || {};
+  const col = st.color || "#657188";
+  let h = "";
+
+  h += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">`;
+
+  // 左：当前阶段
+  h += `<div style="background:linear-gradient(135deg,#fff 0%,${col}11 100%);border:1px solid ${col}44;border-radius:12px;padding:20px;">`;
+  h += `<div style="font-size:13px;color:#657188;margin-bottom:4px;">${a.latest_year} 年 65 岁以上人口占比</div>`;
+  h += `<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px;">`;
+  h += `<span style="font-size:34px;font-weight:700;color:${col};">${a.elderly_share}</span>`;
+  h += `<span style="font-size:15px;color:#657188;">%</span></div>`;
+  h += `<div style="font-size:18px;font-weight:700;color:${col};margin-bottom:6px;">${st.name || "-"}</div>`;
+  h += `<div style="font-size:13px;color:#475569;margin-bottom:12px;line-height:1.6;">${st.desc || ""}</div>`;
+  // 到下一门槛的进度
+  if (a.next_stage) {
+    const lo = st.threshold || 0, hi = a.next_stage.threshold;
+    const pct = Math.max(0, Math.min(100, (a.elderly_share - lo) / (hi - lo) * 100));
+    h += `<div><div style="display:flex;justify-content:space-between;font-size:11px;color:#657188;margin-bottom:4px;">`;
+    h += `<span>${lo}%</span><span>距「${a.next_stage.name}」还差 ${a.next_stage.gap_pct_points} 个百分点</span><span>${hi}%</span></div>`;
+    h += `<div style="background:#e2e8f0;border-radius:6px;height:10px;overflow:hidden;">`;
+    h += `<div style="background:${col};width:${pct}%;height:100%;border-radius:6px;"></div></div></div>`;
+  } else {
+    h += `<div class="muted" style="font-size:12px;">已处于最高档，无更高门槛。</div>`;
+  }
+  h += `</div>`;
+
+  // 右：结构指标 + 门槛跨越年份
+  h += `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;">`;
+  h += `<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:8px;">人口结构</div>`;
+  h += `<table style="width:100%;font-size:12px;margin-bottom:14px;"><tbody>`;
+  if (a.latest_old_dependency != null) {
+    h += `<tr><td class="muted" style="width:120px;">老年抚养比</td><td><strong>${a.latest_old_dependency}%</strong>`;
+    h += `<span class="muted"> 每 100 名劳动年龄人口需抚养的老年人数</span></td></tr>`;
+  }
+  if (a.latest_child_share != null) {
+    h += `<tr><td class="muted">0-14 岁占比</td><td><strong>${a.latest_child_share}%</strong></td></tr>`;
+  }
+  if (a.change_pct_points != null) {
+    h += `<tr><td class="muted">${a.years} 年变化</td><td>`;
+    h += `${a.start_year} 年 ${a.start_elderly_share}% → ${a.latest_year} 年 ${a.elderly_share}%，`;
+    h += `<strong style="color:${col};">上升 ${a.change_pct_points} 个百分点</strong></td></tr>`;
+  }
+  h += `</tbody></table>`;
+  h += `<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">门槛跨越年份</div>`;
+  h += `<table style="width:100%;font-size:12px;"><thead><tr><th>门槛</th><th>阶段</th><th>首次达到</th></tr></thead><tbody>`;
+  (a.crossings || []).forEach(c => {
+    h += `<tr><td>${c.threshold}%</td><td>${c.name}</td>`;
+    h += `<td>${c.year ? `<strong>${c.year}</strong> 年` : '<span class="muted">尚未达到</span>'}</td></tr>`;
+  });
+  h += `</tbody></table></div></div>`;
+
+  // 走势图
+  h += `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">`;
+  h += `<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">老龄化走势（近 ${a.years} 年）</div>`;
+  h += `<div id="agingchart"></div>`;
+  h += `<div class="muted" style="font-size:11px;margin-top:4px;">横虚线为 7% / 14% / 20% 三条阶段门槛。</div>`;
+  h += `<div class="muted" style="font-size:11px;margin-top:8px;line-height:1.6;">${data.source_note || ""}</div>`;
+  h += `</div>`;
+
+  box.innerHTML = h;
+  _drawDemoChart("agingchart", a.history.years, [
+    { name: "65岁以上占比", values: a.history.elderly_share, color: col, width: 2 },
+    { name: "0-14岁占比", values: a.history.child_share, color: "#22c55e", width: 1.5 },
+    { name: "老年抚养比", values: a.history.old_dependency, color: "#94a3b8", width: 1.5, dash: "4,3" },
+  ], { valueSuffix: "%", refLines: (a.thresholds || []).map(t => t.threshold) });
+}
+
+// 年度序列折线图：x 轴为年份，支持多条线与水平参考线
+function _drawDemoChart(containerId, years, seriesList, opts = {}) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const n = (years || []).length;
+  const all = [];
+  seriesList.forEach(s => (s.values || []).forEach(v => { if (v != null) all.push(v); }));
+  (opts.refLines || []).forEach(v => all.push(v));
+  if (!n || !all.length) {
+    el.innerHTML = '<div class="muted" style="padding:12px;">暂无数据</div>';
+    return;
+  }
+
+  const W = 860, H = 240, padL = 50, padR = 14, padT = 30, padB = 30;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  let minV = Math.min(...all), maxV = Math.max(...all);
+  let span = (maxV - minV) || 1;
+  minV -= span * 0.1; maxV += span * 0.1;
+  span = maxV - minV;
+  const x = i => padL + (n === 1 ? plotW / 2 : plotW * i / (n - 1));
+  const y = v => padT + plotH * (1 - (v - minV) / span);
+  const sfx = opts.valueSuffix || "";
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto;background:#fff;border:1px solid #e8edf4;border-radius:8px;">`;
+  for (let t = 0; t <= 4; t++) {
+    const val = minV + span * t / 4;
+    const yy = padT + plotH * (1 - t / 4);
+    svg += `<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W - padR}" y2="${yy.toFixed(1)}" stroke="#eef2f7" stroke-width="1"/>`;
+    svg += `<text x="${padL - 5}" y="${(yy + 4).toFixed(1)}" text-anchor="end" font-size="10" fill="#657188">${val.toFixed(1)}</text>`;
+  }
+  // 水平参考线（老龄化门槛）
+  (opts.refLines || []).forEach(v => {
+    if (v <= minV || v >= maxV) return;
+    svg += `<line x1="${padL}" y1="${y(v).toFixed(1)}" x2="${W - padR}" y2="${y(v).toFixed(1)}" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="5,4"/>`;
+    svg += `<text x="${W - padR - 2}" y="${(y(v) - 3).toFixed(1)}" text-anchor="end" font-size="9" fill="#94a3b8">${v}${sfx}</text>`;
+  });
+  // 折线
+  seriesList.forEach(s => {
+    let d = "", started = false;
+    for (let i = 0; i < n; i++) {
+      const v = (s.values || [])[i];
+      if (v == null) { started = false; continue; }
+      d += (started ? " L" : " M") + x(i).toFixed(1) + " " + y(v).toFixed(1);
+      started = true;
+    }
+    if (!d) return;
+    svg += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${s.width || 2}"`;
+    if (s.dash) svg += ` stroke-dasharray="${s.dash}"`;
+    svg += `/>`;
+  });
+  // x 轴年份
+  const step = Math.max(1, Math.round(n / 10));
+  for (let i = n - 1; i >= 0; i -= step) {
+    svg += `<text x="${x(i).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="9" fill="#657188">${years[i]}</text>`;
+  }
+  // 图例
+  let lx = padL;
+  seriesList.forEach(s => {
+    if (!(s.values || []).some(v => v != null)) return;
+    svg += `<line x1="${lx}" y1="${padT - 13}" x2="${lx + 16}" y2="${padT - 13}" stroke="${s.color}" stroke-width="${s.width || 2}"`;
+    if (s.dash) svg += ` stroke-dasharray="${s.dash}"`;
+    svg += `/>`;
+    svg += `<text x="${lx + 21}" y="${padT - 9}" font-size="11" fill="#36445c">${s.name}</text>`;
+    lx += 21 + s.name.length * 11 + 22;
+  });
+  svg += `</svg>`;
+  el.innerHTML = svg;
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  ["births", "aging"].forEach(k => {
+    const btn = document.getElementById(`${k}-refresh-btn`);
+    if (btn) btn.addEventListener("click", () => loadDemographics(true));
+  });
+  loadDemographics();
 });
 
 document.addEventListener("DOMContentLoaded", () => {
