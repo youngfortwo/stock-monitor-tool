@@ -780,15 +780,25 @@ def _fetch_em_usa_indicator(session, indicator_id: str, page_size: int = 5) -> l
     return r.json().get("result", {}).get("data", [])
 
 
-def _fetch_fred_index(session, series_id: str) -> dict:
+def _fetch_fred_index(series_id: str) -> dict:
     """从 FRED 获取定基指数月度序列，返回 {YYYY-MM: 指数值}。
 
     series_id 示例：CPIAUCSL（美国 CPI 全部城市消费者指数）、PPIACO（美国 PPI 全部商品）。
+
+    本机 Clash 代理环境下 requests + trust_env=False 会 ReadTimeout，
+    与 _fetch_fred_quarterly 一致改用 curl --noproxy 直连。
     """
-    r = session.get(f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}", timeout=20)
-    lines = r.text.strip().splitlines()
+    try:
+        proc = subprocess.run(
+            ["curl", "-s", "--noproxy", "*", "--max-time", "30",
+             f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"],
+            capture_output=True, text=True, timeout=35,
+        )
+        text = proc.stdout if proc.returncode == 0 else ""
+    except Exception:
+        return {}
     data: dict[str, float] = {}
-    for line in lines[1:]:
+    for line in text.strip().splitlines()[1:]:
         parts = line.split(",")
         if len(parts) < 2:
             continue
@@ -802,12 +812,60 @@ def _fetch_fred_index(session, series_id: str) -> dict:
     return data
 
 
-def fetch_cpi_ppi(force_refresh: bool = False) -> dict:
-    """获取中美两国最近 CPI/PPI 指数值及下一次公布时间。
+def _yoy_series_from_index(index_map: dict) -> dict:
+    """由定基指数序列推导同比涨幅序列，返回 {YYYY-MM: 同比百分比}。
 
-    返回（指数值，非同比/环比）:
-        china: {cpi: {month, value}, ppi: {month, value}, next_release}
-        usa:   {cpi: {month, value, publish}, ppi: {month, value, publish},
+    定基指数（如 FRED 的 1982-84=100）本身只表示价格水平，必须与上年同月相除
+    才能得到可用于判断通胀/通缩的变化率。
+    """
+    out: dict[str, float] = {}
+    for ym, v in index_map.items():
+        try:
+            y, m = ym.split("-")
+            base = index_map.get(f"{int(y) - 1}-{m}")
+        except (ValueError, AttributeError):
+            continue
+        if base:
+            out[ym] = (v / base - 1.0) * 100.0
+    return out
+
+
+def _trailing_negative_months(yoy_pairs: list) -> int:
+    """统计序列末尾连续为负的月数。yoy_pairs 为按月份升序的 (月份, 同比) 列表。"""
+    n = 0
+    for _, v in reversed(yoy_pairs):
+        if v is None or v >= 0:
+            break
+        n += 1
+    return n
+
+
+# 通缩的通行判定是物价持续普遍下降，而非单月转负，这里取连续两个季度
+_DEFLATION_MIN_MONTHS = 6
+
+
+def _classify_inflation(yoy, neg_months: int = 0) -> str:
+    """按同比涨幅给出价格水平判定。"""
+    if yoy is None:
+        return ""
+    if yoy < 0:
+        return "通缩" if neg_months >= _DEFLATION_MIN_MONTHS else "单月负增长"
+    if yoy < 1.0:
+        return "低通胀"
+    if yoy < 3.0:
+        return "温和通胀"
+    return "通胀偏高"
+
+
+def fetch_cpi_ppi(force_refresh: bool = False) -> dict:
+    """获取中美两国最近 CPI/PPI 同比涨幅、通胀判定及下一次公布时间。
+
+    同比（yoy）是两国唯一可比的口径：中国官方指数以上年同月=100 发布，美国
+    FRED 指数以 1982-84=100 定基发布，二者的 value 字段不可直接比较。
+
+    返回:
+        china: {cpi: {month, value, yoy, neg_months, level}, ppi: {...}, next_release}
+        usa:   {cpi: {month, value, yoy, neg_months, level, publish}, ppi: {...},
                 next_release_cpi, next_release_ppi}
     """
     global _CPI_PPI_CACHE, _CPI_PPI_CACHE_TS
@@ -840,29 +898,63 @@ def fetch_cpi_ppi(force_refresh: bool = False) -> dict:
         "usa": {"cpi": {}, "ppi": {}, "next_release_cpi": "", "next_release_ppi": ""},
     }
 
-    # ── 中国：东财 RPT_ECONOMY_CPI / RPT_ECONOMY_PPI（"当月"字段 = 上年同月=100 指数）──
+    # ── 中国：东财 RPT_ECONOMY_CPI / RPT_ECONOMY_PPI（原始顺序按月份降序）──
+    def _china_entry(df, yoy_col: str, idx_col: str) -> dict:
+        """取最新一期同比，并回溯近两年判断负增长是否持续。"""
+        pairs = []
+        for _, r in df.head(24).iloc[::-1].iterrows():
+            y = _num(r.get(yoy_col))
+            if y is None:
+                # "当月"字段是上年同月=100 的指数，减 100 即同比涨幅
+                idx = _num(r.get(idx_col))
+                y = round(idx - 100.0, 1) if idx is not None else None
+            pairs.append((str(r.get("月份")), y))
+        latest = df.iloc[0]
+        yoy = pairs[-1][1] if pairs else None
+        neg = _trailing_negative_months(pairs)
+        return {
+            "month": str(latest["月份"]).replace("份", ""),
+            "value": _num(latest.get(idx_col)),
+            "yoy": yoy,
+            "neg_months": neg,
+            "level": _classify_inflation(yoy, neg),
+        }
+
     try:
         cpi = ak.macro_china_cpi()
         if cpi is not None and not cpi.empty:
-            row = cpi.iloc[0]
-            result["china"]["cpi"] = {
-                "month": str(row["月份"]).replace("份", ""),
-                "value": _num(row.get("全国-当月")),
-            }
+            result["china"]["cpi"] = _china_entry(cpi, "全国-同比增长", "全国-当月")
     except Exception:
         pass
     try:
         ppi = ak.macro_china_ppi()
         if ppi is not None and not ppi.empty:
-            row = ppi.iloc[0]
-            result["china"]["ppi"] = {
-                "month": str(row["月份"]).replace("份", ""),
-                "value": _num(row.get("当月")),
-            }
+            result["china"]["ppi"] = _china_entry(ppi, "当月同比增长", "当月")
     except Exception:
         pass
 
-    # ── 美国：FRED 定基指数 + 东财公布日期（直连，绕过代理）──
+    # ── 美国：FRED 定基指数（价格数据）──
+    cpi_idx = _fetch_fred_index("CPIAUCSL")
+    ppi_idx = _fetch_fred_index("PPIACO")
+
+    def _usa_entry(index_map: dict, latest_row) -> dict:
+        latest_month = max(index_map.keys())
+        yoy_map = _yoy_series_from_index(index_map)
+        pairs = [(m, _num(yoy_map[m])) for m in sorted(yoy_map.keys())[-24:]]
+        yoy = _num(yoy_map.get(latest_month))
+        neg = _trailing_negative_months(pairs)
+        return {
+            "month": _month(latest_month + "-01"),
+            "value": round(index_map[latest_month], 1),
+            "yoy": yoy,
+            "neg_months": neg,
+            "level": _classify_inflation(yoy, neg),
+            "publish": str(latest_row.get("PUBLISH_DATE") or "")[:10] if latest_row is not None else "",
+        }
+
+    # ── 美国：东财公布日期（附属信息，取不到不应影响上面的价格数据）──
+    lc = lp = None
+    nc = np_ = ""
     try:
         import requests as _req
         session = _req.Session()
@@ -871,9 +963,6 @@ def fetch_cpi_ppi(force_refresh: bool = False) -> dict:
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
             "Referer": "https://data.eastmoney.com/",
         })
-
-        cpi_idx = _fetch_fred_index(session, "CPIAUCSL")
-        ppi_idx = _fetch_fred_index(session, "PPIACO")
 
         def _parse(rows):
             latest = None
@@ -888,28 +977,17 @@ def fetch_cpi_ppi(force_refresh: bool = False) -> dict:
                     latest = r
             return latest, next_rel
 
-        # 下次公布时间沿用东财同比/环比接口的发布日期
         lc, nc = _parse(_fetch_em_usa_indicator(session, "EMG00000733"))
         lp, np_ = _parse(_fetch_em_usa_indicator(session, "EMG00177897"))
-
-        if cpi_idx:
-            latest_month = max(cpi_idx.keys())
-            result["usa"]["cpi"] = {
-                "month": _month(latest_month + "-01"),
-                "value": round(cpi_idx[latest_month], 1),
-                "publish": str(lc.get("PUBLISH_DATE") or "")[:10] if lc is not None else "",
-            }
-        if ppi_idx:
-            latest_month = max(ppi_idx.keys())
-            result["usa"]["ppi"] = {
-                "month": _month(latest_month + "-01"),
-                "value": round(ppi_idx[latest_month], 1),
-                "publish": str(lp.get("PUBLISH_DATE") or "")[:10] if lp is not None else "",
-            }
-        result["usa"]["next_release_cpi"] = nc
-        result["usa"]["next_release_ppi"] = np_
     except Exception:
         pass
+
+    if cpi_idx:
+        result["usa"]["cpi"] = _usa_entry(cpi_idx, lc)
+    if ppi_idx:
+        result["usa"]["ppi"] = _usa_entry(ppi_idx, lp)
+    result["usa"]["next_release_cpi"] = nc
+    result["usa"]["next_release_ppi"] = np_
 
     _CPI_PPI_CACHE = result
     _CPI_PPI_CACHE_TS = now
@@ -934,11 +1012,14 @@ def _cn_month_to_ym(s: str) -> str:
 
 
 def fetch_cpi_ppi_history(force_refresh: bool = False) -> dict:
-    """获取中美两国近 10 年 CPI/PPI 指数月度序列（用于折线图）。
+    """获取中美两国近 10 年 CPI/PPI 月度序列（用于折线图）。
 
-    返回（指数值，非同比/环比）:
-        china: {dates: [...], cpi: [...], ppi: [...]}   （中国：上年同月=100 指数）
-        usa:   {dates: [...], cpi: [...], ppi: [...]}   （美国：BLS/FRED 定基指数）
+    cpi/ppi 为各自原始口径的指数值（中国：上年同月=100；美国：BLS/FRED 定基指数），
+    cpi_yoy/ppi_yoy 为两国可比的同比涨幅，折线图以同比为准。
+
+    返回:
+        china: {dates: [...], cpi: [...], ppi: [...], cpi_yoy: [...], ppi_yoy: [...]}
+        usa:   {dates: [...], cpi: [...], ppi: [...], cpi_yoy: [...], ppi_yoy: [...]}
     """
     global _CPI_PPI_HISTORY_CACHE, _CPI_PPI_HISTORY_CACHE_TS
     now = time.time()
@@ -958,10 +1039,17 @@ def fetch_cpi_ppi_history(force_refresh: bool = False) -> dict:
 
     result = {
         "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "china": {"dates": [], "cpi": [], "ppi": []},
-        "usa": {"dates": [], "cpi": [], "ppi": []},
+        "china": {"dates": [], "cpi": [], "ppi": [], "cpi_yoy": [], "ppi_yoy": []},
+        "usa": {"dates": [], "cpi": [], "ppi": [], "cpi_yoy": [], "ppi_yoy": []},
     }
     N = 120  # 近 10 年（120 个月）
+
+    def _cn_yoy(idx_val, yoy_val):
+        y = _num(yoy_val)
+        if y is not None:
+            return y
+        idx = _num(idx_val)
+        return round(idx - 100.0, 1) if idx is not None else None
 
     # ── 中国：东财 RPT_ECONOMY_CPI / PPI（"当月"字段 = 上年同月=100 指数）──
     try:
@@ -971,27 +1059,32 @@ def fetch_cpi_ppi_history(force_refresh: bool = False) -> dict:
         ppi = ppi.head(N).iloc[::-1]
         result["china"]["dates"] = [_cn_month_to_ym(m) for m in cpi["月份"]]
         result["china"]["cpi"] = [_num(x) for x in cpi["全国-当月"]]
+        result["china"]["cpi_yoy"] = [
+            _cn_yoy(i, v) for i, v in zip(cpi["全国-当月"], cpi["全国-同比增长"])
+        ]
         ppi_map = {_cn_month_to_ym(m): _num(v) for m, v in zip(ppi["月份"], ppi["当月"])}
+        ppi_yoy_map = {
+            _cn_month_to_ym(m): _cn_yoy(i, v)
+            for m, i, v in zip(ppi["月份"], ppi["当月"], ppi["当月同比增长"])
+        }
         result["china"]["ppi"] = [ppi_map.get(d) for d in result["china"]["dates"]]
+        result["china"]["ppi_yoy"] = [ppi_yoy_map.get(d) for d in result["china"]["dates"]]
     except Exception:
         pass
 
     # ── 美国：FRED 定基指数（CPIAUCSL / PPIACO）──
     try:
-        import requests as _req
-        session = _req.Session()
-        session.trust_env = False
-        session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-        })
-
-        cpi_map = _fetch_fred_index(session, "CPIAUCSL")
-        ppi_map = _fetch_fred_index(session, "PPIACO")
+        cpi_map = _fetch_fred_index("CPIAUCSL")
+        ppi_map = _fetch_fred_index("PPIACO")
         if cpi_map:
             dates = sorted(cpi_map.keys())[-N:]
+            cpi_yoy_map = _yoy_series_from_index(cpi_map)
+            ppi_yoy_map = _yoy_series_from_index(ppi_map)
             result["usa"]["dates"] = dates
             result["usa"]["cpi"] = [_num(cpi_map.get(d)) for d in dates]
             result["usa"]["ppi"] = [_num(ppi_map.get(d)) for d in dates]
+            result["usa"]["cpi_yoy"] = [_num(cpi_yoy_map.get(d)) for d in dates]
+            result["usa"]["ppi_yoy"] = [_num(ppi_yoy_map.get(d)) for d in dates]
     except Exception:
         pass
 

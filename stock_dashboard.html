@@ -1525,7 +1525,7 @@ tr.zt-expand-row > td {
 <section class="tool-panel" id="sec-cpi-ppi">
   <h2>中美 CPI / PPI</h2>
   <div class="muted" style="margin-bottom: 10px;">
-    展示中美两国最近的居民消费价格指数（CPI）与工业生产者价格指数（PPI），以及下一次公布时间。
+    展示中美两国居民消费价格指数（CPI）与工业生产者价格指数（PPI）的同比涨幅、通胀/通缩判定，以及下一次公布时间。
     <button id="cpi-ppi-refresh-btn" type="button" class="btn-refresh" style="margin-left:10px;">刷新</button>
     <span id="cpi-ppi-update-time" class="muted" style="margin-left:10px;font-size:12px;"></span>
   </div>
@@ -1533,9 +1533,9 @@ tr.zt-expand-row > td {
     <div class="muted" style="padding:12px;">加载中...</div>
   </div>
   <div id="cpi-ppi-charts">
-    <h3 style="margin:18px 0 8px;">中国 CPI / PPI 指数（近10年）</h3>
+    <h3 style="margin:18px 0 8px;">中国 CPI / PPI 同比（近10年，%）</h3>
     <div id="chart-cpi-ppi-china"><div class="muted" style="padding:12px;">加载中...</div></div>
-    <h3 style="margin:18px 0 8px;">美国 CPI / PPI 指数（近10年）</h3>
+    <h3 style="margin:18px 0 8px;">美国 CPI / PPI 同比（近10年，%）</h3>
     <div id="chart-cpi-ppi-usa"><div class="muted" style="padding:12px;">加载中...</div></div>
     <h3 style="margin:18px 0 8px;">中国 GDP（近10年，季度当季值）</h3>
     <div id="chart-gdp-china"><div class="muted" style="padding:12px;">加载中...</div></div>
@@ -3652,39 +3652,52 @@ function renderCpiPpi(data) {
   const cn = data.china || {};
   const us = data.usa || {};
 
-  const cnCpi = cn.cpi || {};
-  const cnPpi = cn.ppi || {};
-  const usCpi = us.cpi || {};
-  const usPpi = us.ppi || {};
+  const fmtIdx = (v) => (v == null || v === "" ? "-" : Number(v).toFixed(1));
+  const fmtYoy = (v) => (v == null || v === "" ? "-" : (v > 0 ? "+" : "") + Number(v).toFixed(1) + "%");
+  const yoyColor = (v) => (v == null ? "#657188" : v < 0 ? "#0a7d4f" : "#c2410c");
+  const levelColor = (lv) => ({
+    "通缩": "#0a7d4f",
+    "单月负增长": "#2f855a",
+    "低通胀": "#657188",
+    "温和通胀": "#c2410c",
+    "通胀偏高": "#b91c1c",
+  }[lv] || "#657188");
 
-  const fmtVal = (v) => (v == null || v === "" ? "-" : Number(v).toFixed(1));
-
+  const cnRelease = cn.next_release ? (cn.next_release + " 09:30") : "-";
   const rows = [
-    ["中国", "CPI", cnCpi.month || "-", fmtVal(cnCpi.value), "-", cn.next_release ? (cn.next_release + " 09:30") : "-"],
-    ["中国", "PPI", cnPpi.month || "-", fmtVal(cnPpi.value), "-", cn.next_release ? (cn.next_release + " 09:30") : "-"],
-    ["美国", "CPI", usCpi.month || "-", fmtVal(usCpi.value), usCpi.publish || "-", us.next_release_cpi || "-"],
-    ["美国", "PPI", usPpi.month || "-", fmtVal(usPpi.value), usPpi.publish || "-", us.next_release_ppi || "-"],
+    ["中国", "CPI", cn.cpi || {}, cnRelease],
+    ["中国", "PPI", cn.ppi || {}, cnRelease],
+    ["美国", "CPI", us.cpi || {}, us.next_release_cpi || "-"],
+    ["美国", "PPI", us.ppi || {}, us.next_release_ppi || "-"],
   ];
 
   let h = `<table style="width:100%;font-size:13px;"><thead><tr>
-    <th>国家</th><th>指标</th><th>最新月份</th><th>指数值</th><th>上次公布</th><th>下次公布</th>
+    <th>国家</th><th>指标</th><th>最新月份</th><th>同比</th><th>判定</th><th>指数值</th><th>上次公布</th><th>下次公布</th>
   </tr></thead><tbody>`;
-  rows.forEach(r => {
+  rows.forEach(([country, name, d, nextRel]) => {
+    const neg = d.neg_months || 0;
+    const negTip = neg > 0 ? ` <span class="muted" style="font-size:11px;">(连续${neg}个月为负)</span>` : "";
     h += `<tr>
-      <td>${r[0]}</td>
-      <td style="font-weight:600;">${r[1]}</td>
-      <td>${r[2]}</td>
-      <td style="font-weight:600;">${r[3]}</td>
-      <td class="muted">${r[4]}</td>
-      <td style="color:#0969da;font-weight:600;">${r[5]}</td>
+      <td>${country}</td>
+      <td style="font-weight:600;">${name}</td>
+      <td>${d.month || "-"}</td>
+      <td style="font-weight:600;color:${yoyColor(d.yoy)};">${fmtYoy(d.yoy)}</td>
+      <td style="font-weight:600;color:${levelColor(d.level)};">${d.level || "-"}${negTip}</td>
+      <td class="muted">${fmtIdx(d.value)}</td>
+      <td class="muted">${d.publish || "-"}</td>
+      <td style="color:#0969da;font-weight:600;">${nextRel}</td>
     </tr>`;
   });
   h += `</tbody></table>`;
-  h += `<div class="muted" style="margin-top:8px;font-size:12px;">注：指数值——中国为上年同月=100 的官方指数，美国为 BLS/FRED 定基指数（1982-84=100）。</div>`;
+  h += `<div class="muted" style="margin-top:8px;font-size:12px;line-height:1.7;">
+    注：判断通胀/通缩请看<b>同比</b>列，这是中美唯一可比的口径。<br>
+    「通缩」需同比连续 6 个月（两个季度）为负，未满此条件的负值标记为「单月负增长」；同比 0~1% 为低通胀，1~3% 为温和通胀，3% 以上为通胀偏高。<br>
+    「指数值」为各国原始口径——中国是上年同月=100 的官方指数（减 100 即同比），美国是 BLS/FRED 定基指数（1982-84=100，仅表示价格水平），<b>两国的指数值不可直接比较</b>。
+  </div>`;
   box.innerHTML = h;
 }
 
-function _drawCpiPpiLineChart(containerId, series, dates) {
+function _drawCpiPpiLineChart(containerId, series, dates, opts = {}) {
   const el = document.getElementById(containerId);
   if (!el) return;
   const W = 800, H = 320, padL = 48, padR = 16, padT = 32, padB = 42;
@@ -3698,7 +3711,13 @@ function _drawCpiPpiLineChart(containerId, series, dates) {
     return;
   }
 
+  const refValue = opts.refValue;
+  const hasRef = typeof refValue === "number";
+  const suffix = opts.valueSuffix || "";
+
   let minV = Math.min(...allVals), maxV = Math.max(...allVals);
+  // 参考线是判读基准（如同比 0%），必须始终落在可视范围内
+  if (hasRef) { minV = Math.min(minV, refValue); maxV = Math.max(maxV, refValue); }
   let span = (maxV - minV) || 1;
   minV -= span * 0.08; maxV += span * 0.08;
   span = maxV - minV;
@@ -3714,12 +3733,17 @@ function _drawCpiPpiLineChart(containerId, series, dates) {
     const val = minV + span * t / yTicks;
     const yy = padT + plotH * (1 - t / yTicks);
     svg += `<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W - padR}" y2="${yy.toFixed(1)}" stroke="#eef2f7" stroke-width="1"/>`;
-    svg += `<text x="${padL - 6}" y="${(yy + 4).toFixed(1)}" text-anchor="end" font-size="11" fill="#657188">${val.toFixed(1)}</text>`;
+    svg += `<text x="${padL - 6}" y="${(yy + 4).toFixed(1)}" text-anchor="end" font-size="11" fill="#657188">${val.toFixed(1)}${suffix}</text>`;
   }
   // 零线
-  if (minV < 0 && maxV > 0) {
+  if (!hasRef && minV < 0 && maxV > 0) {
     const y0 = y(0);
     svg += `<line x1="${padL}" y1="${y0.toFixed(1)}" x2="${W - padR}" y2="${y0.toFixed(1)}" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="3,3"/>`;
+  }
+  // 参考线
+  if (hasRef && refValue > minV && refValue < maxV) {
+    const yr = y(refValue);
+    svg += `<line x1="${padL}" y1="${yr.toFixed(1)}" x2="${W - padR}" y2="${yr.toFixed(1)}" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,3"/>`;
   }
 
   // x 轴刻度（约 12 个标签）
@@ -3749,6 +3773,10 @@ function _drawCpiPpiLineChart(containerId, series, dates) {
     svg += `<text x="${lx + 24}" y="${padT - 9}" font-size="12" fill="#36445c">${s.name}</text>`;
     lx += 24 + s.name.length * 13 + 26;
   });
+  if (hasRef && opts.refLabel) {
+    svg += `<line x1="${lx}" y1="${padT - 14}" x2="${lx + 18}" y2="${padT - 14}" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,3"/>`;
+    svg += `<text x="${lx + 24}" y="${padT - 9}" font-size="12" fill="#64748b">${opts.refLabel}</text>`;
+  }
 
   svg += '</svg>';
   el.innerHTML = svg;
@@ -3762,14 +3790,15 @@ async function loadCpiPpiHistory(force = false) {
     if (data.error) throw new Error(data.error);
 
     const cn = data.china || {}, us = data.usa || {};
+    const yoyOpts = { refValue: 0, valueSuffix: "%", refLabel: "0%（通胀/通缩分界）" };
     _drawCpiPpiLineChart("chart-cpi-ppi-china", [
-      { name: "CPI", values: cn.cpi || [], color: "#c2410c" },
-      { name: "PPI", values: cn.ppi || [], color: "#0969da" },
-    ], cn.dates || []);
+      { name: "CPI 同比", values: cn.cpi_yoy || [], color: "#c2410c" },
+      { name: "PPI 同比", values: cn.ppi_yoy || [], color: "#0969da" },
+    ], cn.dates || [], yoyOpts);
     _drawCpiPpiLineChart("chart-cpi-ppi-usa", [
-      { name: "CPI", values: us.cpi || [], color: "#c2410c" },
-      { name: "PPI", values: us.ppi || [], color: "#0969da" },
-    ], us.dates || []);
+      { name: "CPI 同比", values: us.cpi_yoy || [], color: "#c2410c" },
+      { name: "PPI 同比", values: us.ppi_yoy || [], color: "#0969da" },
+    ], us.dates || [], yoyOpts);
   } catch (e) {
     ["chart-cpi-ppi-china", "chart-cpi-ppi-usa"].forEach(id => {
       const el = document.getElementById(id);
