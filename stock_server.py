@@ -1222,6 +1222,11 @@ from sepa_stage2_scanner import evaluate_stage2, fetch_history, load_industry_ov
 from sepa_stage1_scanner import evaluate_stage1
 from technical_analyzer import analyze_technical
 from financial_filter import load_cache
+from kondratiev_analyzer import analyze_kondratiev
+
+# 康波周期缓存：每日更新一次（阶段划分按年，无需高频刷新）
+_KONDRATIEV_CACHE = None
+_KONDRATIEV_CACHE_DATE = None
 
 _RPS_CACHE: dict[str, float] = {}
 _RPS_CACHE_TS = 0.0
@@ -2638,6 +2643,9 @@ class StockHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/gdp_history":
             self.handle_gdp_history(parsed.query)
             return
+        if parsed.path == "/api/kondratiev":
+            self.handle_kondratiev(parsed.query)
+            return
         if parsed.path == "/api/equity_bond_spread":
             self.handle_equity_bond_spread(parsed.query)
             return
@@ -3076,6 +3084,25 @@ class StockHandler(SimpleHTTPRequestHandler):
         force = params.get("force", ["false"])[0].lower() == "true"
         try:
             result = fetch_gdp_history(force_refresh=force)
+            self.write_json(result)
+        except Exception as exc:
+            traceback.print_exc()
+            self.write_json({"error": str(exc)}, status=500)
+
+    def handle_kondratiev(self, query: str = "") -> None:
+        """GET /api/kondratiev：康波周期当前阶段定位 + 宏观验证 + 历史时间轴。"""
+        global _KONDRATIEV_CACHE, _KONDRATIEV_CACHE_DATE
+        import datetime as _dt
+        params = parse_qs(query)
+        force = params.get("force", ["false"])[0].lower() == "true"
+        today = _dt.date.today().isoformat()
+        if not force and _KONDRATIEV_CACHE is not None and _KONDRATIEV_CACHE_DATE == today:
+            self.write_json(_KONDRATIEV_CACHE)
+            return
+        try:
+            result = analyze_kondratiev()
+            _KONDRATIEV_CACHE = result
+            _KONDRATIEV_CACHE_DATE = today
             self.write_json(result)
         except Exception as exc:
             traceback.print_exc()
