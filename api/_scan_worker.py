@@ -3,6 +3,16 @@
 from __future__ import annotations
 import argparse, json, os, shutil, sys, time
 from pathlib import Path
+
+# Worker is launched from api/ but scan outputs/caches remain under the project root.
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+CORE_DIR = PROJECT_ROOT / "core"
+DB_DIR = PROJECT_ROOT / "db"
+for _p in (CORE_DIR, DB_DIR):
+    sp = str(_p)
+    if sp not in sys.path:
+        sys.path.insert(0, sp)
+
 import pandas as pd
 
 HISTORY_MAX = 10
@@ -74,22 +84,22 @@ def main():
     args = parser.parse_args()
 
     if args.type == "stage1":
-        script = "sepa_stage1_scanner.py"
+        script = str(CORE_DIR / "sepa_stage1_scanner.py")
         prefix = "stage1_"
         output = "sepa_stage1_candidates_test.csv"
         progress_file = "scan_progress_s1.json"
     elif args.type == "value_bottom":
-        script = "value_bottom_scanner.py"
+        script = str(CORE_DIR / "value_bottom_scanner.py")
         prefix = "vb_"
         output = "value_bottom_candidates_test.csv"
         progress_file = "scan_progress_vb.json"
     elif args.type == "oversold":
-        script = "oversold_rebound_scanner.py"
+        script = str(CORE_DIR / "oversold_rebound_scanner.py")
         prefix = "ob_"
         output = "oversold_rebound_candidates_test.csv"
         progress_file = "scan_progress_ob.json"
     else:
-        script = "sepa_stage2_scanner.py"
+        script = str(CORE_DIR / "sepa_stage2_scanner.py")
         prefix = "sepa_"
         output = "sepa_stage2_candidates_test.csv"
         progress_file = "scan_progress_s2.json"

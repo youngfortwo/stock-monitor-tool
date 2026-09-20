@@ -13,6 +13,13 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+# Keep the project root as runtime cwd, while source files live in api/core/db.
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+for _p in (PROJECT_ROOT / "core", PROJECT_ROOT / "db", PROJECT_ROOT / "common"):
+    sp = str(_p)
+    if sp not in sys.path:
+        sys.path.insert(0, sp)
+
 import pandas as pd
 import akshare as ak
 
@@ -1246,7 +1253,7 @@ def _load_rps_cache() -> dict[str, float]:
     if _RPS_CACHE and now - _RPS_CACHE_TS < 60:
         return _RPS_CACHE
     for fname in ["rps_all.csv", "sepa_stage2_candidates.csv"]:
-        csv_path = os.path.join(os.path.dirname(__file__), fname)
+        csv_path = str(PROJECT_ROOT / fname)
         try:
             if os.path.exists(csv_path):
                 df = pd.read_csv(csv_path, encoding="utf-8-sig")
@@ -1453,7 +1460,7 @@ def _fetch_net_inflow_direct() -> float | None:
 _net_inflow_cache: dict = {}
 
 # 行业板块历史快照存储目录（每日一份 JSON，用于20天排名计算）
-_INDUSTRY_RANK_HISTORY_DIR = Path(__file__).parent / "industry_rank_history"
+_INDUSTRY_RANK_HISTORY_DIR = PROJECT_ROOT / "industry_rank_history"
 
 
 def _industry_rank_history_dir() -> Path:
@@ -2239,7 +2246,7 @@ def _fetch_industry_rank_sina(session, url: str = "https://vip.stock.finance.sin
 # ── 概念板块排行（与行业板块并列，独立历史快照） ─────────────────────
 _concept_rank_cache: dict = {}
 
-_CONCEPT_RANK_HISTORY_DIR = Path(__file__).parent / "concept_rank_history"
+_CONCEPT_RANK_HISTORY_DIR = PROJECT_ROOT / "concept_rank_history"
 
 
 def _concept_rank_history_dir() -> Path:
@@ -2613,6 +2620,11 @@ class StockHandler(SimpleHTTPRequestHandler):
     def do_GET(self) -> None:
         """处理GET请求，路由API和静态文件"""
         parsed = urlparse(self.path)
+        # Dashboard HTML lives under static/ after the directory cleanup.
+        # Keep the old /stock_dashboard.html URL working for bookmarks.
+        if parsed.path == "/stock_dashboard.html":
+            self.path = "/static/stock_dashboard.html" + (("?" + parsed.query) if parsed.query else "")
+            return super().do_GET()
         if parsed.path == "/api/sepa":
             self.handle_sepa(parsed.query)
             return
@@ -3237,7 +3249,7 @@ class StockHandler(SimpleHTTPRequestHandler):
             try:
                 import json as _json
                 from pathlib import Path as _Path
-                cache_path = _Path(__file__).parent / "market_breadth.json"
+                cache_path = PROJECT_ROOT / "market_breadth.json"
                 cache_path.write_text(_json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
             except Exception:
                 pass
@@ -3608,9 +3620,9 @@ class StockHandler(SimpleHTTPRequestHandler):
         def _run():
             try:
                 subprocess.run(
-                    [sys.executable, "_scan_worker.py", "--type", scan_type,
+                    [sys.executable, str(PROJECT_ROOT / "api" / "_scan_worker.py"), "--type", scan_type,
                      "--total", str(total), "--batch", str(batch)],
-                    cwd=str(Path(__file__).parent),
+                    cwd=str(PROJECT_ROOT),
                     stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
                 )
             except Exception as exc:
@@ -3694,7 +3706,7 @@ class StockHandler(SimpleHTTPRequestHandler):
             self.write_json({"ok": False, "error": "count 必须为正数（万户）"}, status=400)
             return
 
-        manual_path = Path(__file__).parent / "investor_accounts_manual.json"
+        manual_path = PROJECT_ROOT / "investor_accounts_manual.json"
         try:
             if manual_path.exists():
                 rows = json.loads(manual_path.read_text(encoding="utf-8"))
@@ -3761,6 +3773,8 @@ class StockHandler(SimpleHTTPRequestHandler):
 
 def main() -> int:
     """启动HTTP服务主函数"""
+    # All CSV/cache/static paths are intentionally project-root relative.
+    os.chdir(PROJECT_ROOT)
     # 强制停止所有残留的扫描 worker 进程（服务器重启 = 全新开始）
     try:
         subprocess.run(["pkill", "-9", "-f", "_scan_worker.py"], timeout=5)
@@ -3789,7 +3803,7 @@ def main() -> int:
 
     # 绑定 0.0.0.0：允许局域网内另一台扫描机（sepa_stage2_job.py）上报数据
     server = ThreadingHTTPServer(("0.0.0.0", PORT), StockHandler)
-    print(f"Serving dashboard with API at http://0.0.0.0:{PORT}/stock_dashboard.html")
+    print(f"Serving dashboard with API at http://0.0.0.0:{PORT}/static/stock_dashboard.html")
     server.serve_forever()
     return 0
 

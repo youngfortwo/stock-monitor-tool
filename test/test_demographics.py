@@ -5,8 +5,13 @@
 """
 import os
 import sys
+from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+for _p in (PROJECT_ROOT / "core", PROJECT_ROOT / "db", PROJECT_ROOT / "api"):
+    sp = str(_p)
+    if sp not in sys.path:
+        sys.path.insert(0, sp)
 
 from demographics_analyzer import (
     _AGING_STAGES, _DIVERGENCE_PCT, _NBS_BIRTHS_WAN, _NBS_BIRTH_RATE,

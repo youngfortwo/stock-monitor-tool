@@ -9,6 +9,8 @@ import sys
 import time
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
 import akshare as ak
 import numpy as np
 import pandas as pd
@@ -115,7 +117,7 @@ def get_stock_pool(include_bj: bool, limit: int, offset: int) -> pd.DataFrame:
     if pool is None or pool.empty:
         import json as _json
         from pathlib import Path as _Path
-        cache_file = _Path(__file__).parent / "industry_classification_cache.json"
+        cache_file = PROJECT_ROOT / "industry_classification_cache.json"
         if cache_file.exists():
             data = _json.loads(cache_file.read_text(encoding="utf-8"))
             stocks = data.get("stocks", {})
@@ -1112,7 +1114,7 @@ def main() -> int:
     # 修复股票池中名称为空的行：优先从本地缓存补全，缓存无则用代码兜底
     _name_fallback = {}
     try:
-        _cache_file = Path(__file__).parent / "industry_classification_cache.json"
+        _cache_file = PROJECT_ROOT / "industry_classification_cache.json"
         if _cache_file.exists():
             _cache_data = json.loads(_cache_file.read_text(encoding="utf-8"))
             _cache_stocks = _cache_data.get("stocks", {})

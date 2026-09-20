@@ -21,11 +21,13 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
 import py_mini_racer
 import requests
 
 # ─── 常量 ─────────────────────────────────────────────────────────────────────
-_CACHE_FILE = Path(__file__).parent / "industry_classification_cache.json"
+_CACHE_FILE = PROJECT_ROOT / "industry_classification_cache.json"
 _CACHE_EXPIRE_DAYS = 7
 _CNINFO_WORKERS = 20
 _TENCENT_BATCH_SIZE = 80
@@ -292,7 +294,7 @@ def _em_concept_map(codes: list[str]) -> dict[str, list[str]]:
     # ── 本地文件缓存 ──────────────────────────────────────
     # 概念板块不会每天变化，缓存到 concept_map_cache.json，TTL=1天
     import json as _json
-    cache_file = Path(__file__).parent / "concept_map_cache.json"
+    cache_file = PROJECT_ROOT / "concept_map_cache.json"
     _cache_data: dict = {}
     _cache_loaded = False
     _cache_dirty = False
@@ -490,7 +492,7 @@ def _fmt_market_cap(cap: float) -> str:
 # ─── RPS 计算 ────────────────────────────────────────────────────────────────────
 def _get_120d_return(code: str) -> float | None:
     """从 daily_cache 读取 120 日前和最新的收盘价，计算收益率(%)。"""
-    csv_path = Path(__file__).parent / "daily_cache" / f"{code}.csv"
+    csv_path = PROJECT_ROOT / "daily_cache" / f"{code}.csv"
     if not csv_path.exists():
         return None
     try:
@@ -591,7 +593,7 @@ def _get_5d_return_from_cache(code: str) -> tuple[float, float] | None:
 
     返回 (5日涨跌幅%, 最新收盘价) 或 None。
     """
-    csv_path = Path(__file__).parent / "daily_cache" / f"{code}.csv"
+    csv_path = PROJECT_ROOT / "daily_cache" / f"{code}.csv"
     if not csv_path.exists():
         return None
     try:
@@ -791,7 +793,7 @@ def _get_pct_chg_from_cache(code: str) -> float | None:
 
     取最近两个交易日的 close 计算 (今日/昨日 - 1) * 100。
     """
-    csv_path = Path(__file__).parent / "daily_cache" / f"{code}.csv"
+    csv_path = PROJECT_ROOT / "daily_cache" / f"{code}.csv"
     if not csv_path.exists():
         return None
     try:

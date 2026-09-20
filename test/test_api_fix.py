@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 import os
 import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+for _p in (PROJECT_ROOT / "core", PROJECT_ROOT / "db", PROJECT_ROOT / "api"):
+    sp = str(_p)
+    if sp not in sys.path:
+        sys.path.insert(0, sp)
 
 # Disable all proxies
 os.environ.pop("HTTP_PROXY", None)

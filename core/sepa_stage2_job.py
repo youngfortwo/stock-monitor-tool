@@ -32,12 +32,18 @@ from pathlib import Path
 
 import pandas as pd
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DB_DIR = PROJECT_ROOT / "db"
+if str(DB_DIR) not in sys.path:
+    sys.path.insert(0, str(DB_DIR))
+
 from sepa_db import save_candidates, load_candidates
 
 BATCH_TIMEOUT = 900          # 单批超时（秒），与 _scan_worker.py 约定一致
+SCANNER_SCRIPT = Path(__file__).with_name("sepa_stage2_scanner.py")
 UPLOAD_RETRIES = 3           # 上报失败重试次数
 UPLOAD_RETRY_WAIT = 10       # 重试间隔（秒）
-CALENDAR_CACHE = Path(__file__).parent / "trade_calendar_cache.json"
+CALENDAR_CACHE = PROJECT_ROOT / "trade_calendar_cache.json"
 CALENDAR_TTL_DAYS = 90        # 交易日历缓存有效期
 
 
@@ -86,7 +92,7 @@ def run_batches(total: int, batch: int) -> pd.DataFrame:
         print(f"[job] 第 {batch_no + 1}/{total_batches} 批（{offset}-{offset + limit}）扫描中…", flush=True)
         try:
             proc = subprocess.run(
-                [sys.executable, "sepa_stage2_scanner.py",
+                [sys.executable, str(SCANNER_SCRIPT),
                  "--offset", str(offset), "--limit", str(limit),
                  "--output", f"batch_results/job_sepa_{offset}.csv",
                  "--sleep-seconds", "0.15"],

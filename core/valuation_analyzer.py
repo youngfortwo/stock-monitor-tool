@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import time
 import warnings
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -46,6 +47,7 @@ _CACHE_MAX = 200
 
 # 本地行业分类缓存（避免东财限流时 step3 完全失败）
 _local_industry_cache: dict | None = None
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _trim_cache(cache: dict, ttl: float) -> None:
@@ -62,8 +64,8 @@ def _load_local_industry_cache() -> dict:
     if _local_industry_cache is not None:
         return _local_industry_cache
     import json
-    from pathlib import Path
-    cache_file = Path(__file__).parent / "industry_classification_cache.json"
+
+    cache_file = PROJECT_ROOT / "industry_classification_cache.json"
     if not cache_file.exists():
         _local_industry_cache = {}
         return _local_industry_cache

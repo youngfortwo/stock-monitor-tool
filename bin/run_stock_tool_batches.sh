@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."
 PYTHON="${PYTHON_BIN:-/opt/homebrew/bin/python3.12}"
 export DYLD_LIBRARY_PATH="/opt/homebrew/opt/expat/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
 TOTAL="${1:-500}"
@@ -195,7 +195,7 @@ write_progress "running" "install" 0 0 0 0 "安装或确认依赖"
 
 echo "Generating market breadth and panic index..."
 write_progress "running" "market_breadth" 0 0 0 0 "更新市场情绪和恐慌指数"
-if "${PYTHON}" market_breadth.py; then
+if "${PYTHON}" core/market_breadth.py; then
     write_progress "running" "market_breadth_done" 0 0 0 0 "市场情绪更新完成"
 else
     echo "WARN market breadth update failed; keeping previous market_breadth.json and continuing."
@@ -215,21 +215,21 @@ for ((OFFSET=0; OFFSET<TOTAL; OFFSET+=BATCH_SIZE)); do
 
     write_progress "running" "trend_scan" "${BATCH_NO}" $((BATCH_NO - 1)) "${OFFSET}" "${CURRENT_LIMIT}" \
         "第 ${BATCH_NO}/${TOTAL_BATCHES} 批：扫描趋势候选股"
-    "${PYTHON}" stock_scanner.py \
+    "${PYTHON}" core/stock_scanner.py \
         --offset "${OFFSET}" \
         --limit "${CURRENT_LIMIT}" \
         --output "${TMP_DIR}/trend_${OFFSET}.csv"
 
     write_progress "running" "sepa_scan" "${BATCH_NO}" $((BATCH_NO - 1)) "${OFFSET}" "${CURRENT_LIMIT}" \
         "第 ${BATCH_NO}/${TOTAL_BATCHES} 批：扫描 SEPA 第二阶段"
-    "${PYTHON}" sepa_stage2_scanner.py \
+    "${PYTHON}" core/sepa_stage2_scanner.py \
         --offset "${OFFSET}" \
         --limit "${CURRENT_LIMIT}" \
         --output "${TMP_DIR}/sepa_${OFFSET}.csv"
 
     write_progress "running" "stage1_scan" "${BATCH_NO}" $((BATCH_NO - 1)) "${OFFSET}" "${CURRENT_LIMIT}" \
         "第 ${BATCH_NO}/${TOTAL_BATCHES} 批：扫描 SEPA 第一阶段"
-    "${PYTHON}" sepa_stage1_scanner.py \
+    "${PYTHON}" core/sepa_stage1_scanner.py \
         --offset "${OFFSET}" \
         --limit "${CURRENT_LIMIT}" \
         --output "${TMP_DIR}/stage1_${OFFSET}.csv"
@@ -245,7 +245,7 @@ for ((OFFSET=0; OFFSET<TOTAL; OFFSET+=BATCH_SIZE)); do
         echo "Refreshing market breadth data..."
         write_progress "running" "market_breadth" "${BATCH_NO}" "${BATCH_NO}" "${OFFSET}" "${CURRENT_LIMIT}" \
             "第 ${BATCH_NO}/${TOTAL_BATCHES} 批：刷新市场情绪"
-        "${PYTHON}" market_breadth.py 2>/dev/null || true
+        "${PYTHON}" core/market_breadth.py 2>/dev/null || true
     fi
 
     write_progress "running" "batch_done" "${BATCH_NO}" "${BATCH_NO}" "${OFFSET}" "${CURRENT_LIMIT}" \
@@ -277,7 +277,7 @@ PY
 )"
 
 if [[ -n "${TOP_CODE}" ]]; then
-    "${PYTHON}" plot_kline.py --symbol "${TOP_CODE}" --days 120 --output "kline_${TOP_CODE}.png"
+    "${PYTHON}" core/plot_kline.py --symbol "${TOP_CODE}" --days 120 --output "kline_${TOP_CODE}.png"
 else
     echo "No trend candidate found; skipped K-line chart."
 fi
@@ -287,4 +287,4 @@ echo "Done."
 echo "Scanned total=${TOTAL}, batch_size=${BATCH_SIZE}"
 write_progress "done" "done" "${TOTAL_BATCHES}" "${TOTAL_BATCHES}" "${TOTAL}" 0 "分批扫描完成"
 echo "Dashboard:"
-echo "  http://localhost:${PORT}/stock-monitor-tool/stock_dashboard.html"
+echo "  http://localhost:${PORT}/stock-monitor-tool/static/stock_dashboard.html"

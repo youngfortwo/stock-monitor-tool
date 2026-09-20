@@ -1,3 +1,0 @@
-cd stock-monitor-tool
-python3 -m pip install -r requirements-stock-scanner.txt
-PORT=8001 python3 stock_server.py

@@ -11,8 +11,13 @@
 """
 import os
 import sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+for _p in (PROJECT_ROOT / "core", PROJECT_ROOT / "db", PROJECT_ROOT / "api"):
+    sp = str(_p)
+    if sp not in sys.path:
+        sys.path.insert(0, sp)
 from kondratiev_analyzer import (
     _PHASE_INDICATOR_PROFILE, _band_score, _locate_phase, _norm_month,
     _percentile, _score_all_phases, backtest_discrimination,

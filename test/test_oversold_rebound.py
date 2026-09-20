@@ -10,8 +10,13 @@
 """
 import os
 import sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+for _p in (PROJECT_ROOT / "core", PROJECT_ROOT / "db", PROJECT_ROOT / "api"):
+    sp = str(_p)
+    if sp not in sys.path:
+        sys.path.insert(0, sp)
 import numpy as np
 import pandas as pd
 from oversold_rebound_scanner import evaluate_oversold_rebound, is_risk_name
