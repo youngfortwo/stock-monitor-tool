@@ -456,7 +456,8 @@ def analyze_business_cycles() -> dict[str, Any]:
         ),
     }
     corr = _with_retry(_fetch_industrial_yoy)
-    for key in ["kitchin", "juglar", "kuznets"]:
+    # 由大到小排列，与侧边栏各周期模块的顺序一致
+    for key in ["kuznets", "juglar", "kitchin"]:
         series = _with_retry(_FETCHERS[key])
         out["cycles"].append(
             analyze_cycle(key, series, corr if key == "kitchin" else None)

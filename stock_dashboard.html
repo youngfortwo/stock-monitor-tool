@@ -1272,7 +1272,9 @@ tr.zt-expand-row > td {
   <ul class="sidebar-nav">
     <li><a href="#cpi-ppi"><span class="nav-icon">📈</span>CPI/PPI</a></li>
     <li><a href="#kondratiev"><span class="nav-icon">🌊</span>康波周期</a></li>
-    <li><a href="#business-cycles"><span class="nav-icon">🔄</span>经济周期</a></li>
+    <li><a href="#kuznets"><span class="nav-icon">🏗️</span>库兹涅茨周期</a></li>
+    <li><a href="#juglar"><span class="nav-icon">🏭</span>朱格拉周期</a></li>
+    <li><a href="#kitchin"><span class="nav-icon">📦</span>基钦周期</a></li>
   </ul>
   <div class="sidebar-divider"></div>
   <div class="sidebar-section-label">选股策略</div>
@@ -1568,22 +1570,56 @@ tr.zt-expand-row > td {
 </section>
 </div><!-- /page-kondratiev -->
 
-<!-- ===== 经济周期（基钦/朱格拉/库兹涅茨）===== -->
-<div id="page-business-cycles" class="page">
-<section class="tool-panel" id="sec-business-cycles">
-  <h2>经济周期</h2>
+<!-- ===== 库兹涅茨周期（建筑/房地产，约 18~20 年）===== -->
+<div id="page-kuznets" class="page">
+<section class="tool-panel" id="sec-kuznets">
+  <h2>库兹涅茨周期</h2>
   <div class="muted" style="margin-bottom: 10px;">
-    基钦周期（库存，约 3~4 年）、朱格拉周期（设备投资，约 8~10 年）、库兹涅茨周期（建筑/房地产，约 18~20 年）。
-    与康波不同，这三个周期足够短、历史里有多个完整循环，因此阶段<b>直接由指标自身的波动位置推导</b>
-    （水平分位 × 变化方向），周期长度也由波谷间隔<b>实测</b>后与理论值对比，不使用手写日历表。
-    <button id="bizcycle-refresh-btn" type="button" class="btn-refresh" style="margin-left:10px;">刷新</button>
-    <span id="bizcycle-update-time" class="muted" style="margin-left:10px;font-size:12px;"></span>
+    建筑 / 房地产周期，理论长度约 18~20 年，是四个周期中仅次于康波的长周期。
+    以国房景气指数为核心指标，阶段<b>由指标自身的波动位置推导</b>（水平分位 × 变化方向），
+    周期长度由波谷间隔<b>实测</b>后与理论值对比，不使用手写日历表。
+    <button class="btn-refresh bizcycle-refresh" type="button" style="margin-left:10px;">刷新</button>
+    <span class="muted bizcycle-update-time" style="margin-left:10px;font-size:12px;"></span>
   </div>
-  <div id="bizcycle-result">
+  <div id="cycle-result-kuznets">
     <div class="muted" style="padding:12px;">加载中...</div>
   </div>
 </section>
-</div><!-- /page-business-cycles -->
+</div><!-- /page-kuznets -->
+
+<!-- ===== 朱格拉周期（设备投资，约 8~10 年）===== -->
+<div id="page-juglar" class="page">
+<section class="tool-panel" id="sec-juglar">
+  <h2>朱格拉周期</h2>
+  <div class="muted" style="margin-bottom: 10px;">
+    设备投资周期，理论长度约 8~10 年，由企业资本开支的扩张与出清驱动。
+    以固定资产投资同比为核心指标，阶段<b>由指标自身的波动位置推导</b>（水平分位 × 变化方向），
+    周期长度由波谷间隔<b>实测</b>后与理论值对比，不使用手写日历表。
+    <button class="btn-refresh bizcycle-refresh" type="button" style="margin-left:10px;">刷新</button>
+    <span class="muted bizcycle-update-time" style="margin-left:10px;font-size:12px;"></span>
+  </div>
+  <div id="cycle-result-juglar">
+    <div class="muted" style="padding:12px;">加载中...</div>
+  </div>
+</section>
+</div><!-- /page-juglar -->
+
+<!-- ===== 基钦周期（库存，约 3~4 年）===== -->
+<div id="page-kitchin" class="page">
+<section class="tool-panel" id="sec-kitchin">
+  <h2>基钦周期</h2>
+  <div class="muted" style="margin-bottom: 10px;">
+    库存周期，理论长度约 3~4 年（40 个月），是四个周期中最短、也是唯一数据充分到可验证周期长度的。
+    以 PPI 同比为核心指标、工业增加值同比为佐证，阶段<b>由指标自身的波动位置推导</b>（水平分位 × 变化方向），
+    周期长度由波谷间隔<b>实测</b>后与理论值对比，不使用手写日历表。
+    <button class="btn-refresh bizcycle-refresh" type="button" style="margin-left:10px;">刷新</button>
+    <span class="muted bizcycle-update-time" style="margin-left:10px;font-size:12px;"></span>
+  </div>
+  <div id="cycle-result-kitchin">
+    <div class="muted" style="padding:12px;">加载中...</div>
+  </div>
+</section>
+</div><!-- /page-kitchin -->
 
 <!-- ===== 个股综合分析 ===== -->
 <div id="page-analysis" class="page">
@@ -4281,45 +4317,41 @@ document.addEventListener("DOMContentLoaded", () => {
   loadKondratiev();
 });
 
-// ─── 经济周期（基钦 / 朱格拉 / 库兹涅茨）────────────────────────
+// ─── 各周期模块（库兹涅茨 / 朱格拉 / 基钦，各自独立页面）──────────
+// 三个周期共用一次 /api/business_cycles 取数，再分别渲染到各页面的容器，
+// 避免每切一个页面就重复请求一遍相同的月度数据。
 async function loadBizCycles(force = false) {
-  const box = document.getElementById("bizcycle-result");
-  const timeEl = document.getElementById("bizcycle-update-time");
+  const keys = ["kuznets", "juglar", "kitchin"];
   try {
     const url = "/api/business_cycles" + (force ? "?force=true" : "");
     const resp = await fetch(url, { cache: "no-store" });
     const data = await resp.json();
     if (data.error) throw new Error(data.error);
-    if (timeEl) timeEl.textContent = `更新时间: ${data.generated_at || "-"}`;
+    document.querySelectorAll(".bizcycle-update-time").forEach(el => {
+      el.textContent = `更新时间: ${data.generated_at || "-"}`;
+    });
     renderBizCycles(data);
   } catch (e) {
-    if (box) box.innerHTML = `<div class="muted" style="padding:12px;color:#c2410c;">经济周期加载失败: ${e.message}</div>`;
+    keys.forEach(k => {
+      const box = document.getElementById(`cycle-result-${k}`);
+      if (box) box.innerHTML = `<div class="muted" style="padding:12px;color:#c2410c;">加载失败: ${e.message}</div>`;
+    });
   }
 }
 
 function renderBizCycles(data) {
-  const box = document.getElementById("bizcycle-result");
-  if (!box) return;
   const cycles = data.cycles || [];
-  if (!cycles.length) {
-    box.innerHTML = '<div class="muted" style="padding:12px;">暂无数据</div>';
-    return;
-  }
-
   const dirColor = d => (d === "上行" ? "#c2410c" : d === "下行" ? "#12805c" : "#657188");
-  let h = "";
 
   cycles.forEach(c => {
+    const box = document.getElementById(`cycle-result-${c.key}`);
+    if (!box) return;
+    let h = "";
     const col = c.color || "#657188";
-    h += `<div style="margin-bottom:22px;">`;
-    h += `<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:10px;">`;
-    h += `<span style="font-size:16px;font-weight:700;color:${col};">${c.name}<span style="font-size:12px;color:#657188;font-weight:400;"> · ${c.subtitle}</span></span>`;
-    h += `<span class="muted" style="font-size:12px;">理论周期 ${c.theory_label || "-"}</span>`;
-    h += `</div>`;
 
     if (c.error) {
-      h += `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;" class="muted">`;
-      h += `<span style="font-size:12px;color:#c2410c;">数据源不可用：${c.error}</span></div></div>`;
+      box.innerHTML = `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">`
+        + `<span style="font-size:12px;color:#c2410c;">数据源不可用：${c.error}</span></div>`;
       return;
     }
 
@@ -4416,19 +4448,12 @@ function renderBizCycles(data) {
       h += `<div style="background:#fef3c7;border:1px solid #fde68a;color:#92400e;border-radius:6px;padding:8px 10px;font-size:12px;margin-top:8px;">${c.data_warning}</div>`;
     }
     h += `<div class="muted" style="font-size:11px;margin-top:8px;line-height:1.6;">${c.indicator_note || ""}</div>`;
-    h += `</div></div>`;
-  });
+    h += `</div>`;
+    h += `<div class="muted" style="font-size:11px;line-height:1.6;margin-top:10px;">${data.method || ""}</div>`;
 
-  if (data.summary) {
-    h += `<div style="background:#f8fafc;border-left:3px solid #0969da;padding:10px 14px;border-radius:0 8px 8px 0;font-size:13px;color:#374151;line-height:1.6;margin-bottom:10px;">${data.summary}</div>`;
-  }
-  h += `<div class="muted" style="font-size:11px;line-height:1.6;">${data.method || ""}</div>`;
-  box.innerHTML = h;
-
-  // 走势图需在 innerHTML 写入后绘制（依赖容器已存在）
-  cycles.forEach(c => {
-    if (c.error || !c.history) return;
-    _drawCycleChart(`bizchart-${c.key}`, c);
+    box.innerHTML = h;
+    // 走势图必须在 innerHTML 写入之后画，否则容器还不存在
+    if (c.history) _drawCycleChart(`bizchart-${c.key}`, c);
   });
 }
 
@@ -4498,8 +4523,10 @@ function _drawCycleChart(containerId, c) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  const btn = document.getElementById("bizcycle-refresh-btn");
-  if (btn) btn.addEventListener("click", () => loadBizCycles(true));
+  // 三个周期页面各有一个刷新按钮，共用同一次取数
+  document.querySelectorAll(".bizcycle-refresh").forEach(btn => {
+    btn.addEventListener("click", () => loadBizCycles(true));
+  });
   loadBizCycles();
 });
 
