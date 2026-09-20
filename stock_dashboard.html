@@ -1628,8 +1628,8 @@ tr.zt-expand-row > td {
 <section class="tool-panel" id="sec-births">
   <h2>中国新生儿统计</h2>
   <div class="muted" style="margin-bottom: 10px;">
-    近 20 年出生人口、出生率与总和生育率。出生人口以<b>国家统计局公布值</b>为主序列，
-    同时给出世界银行（联合国口径）推算值作对照，两者分歧的年份单独列出。
+    近 20 年出生人口、净增人口、出生率与总和生育率。出生人口以<b>国家统计局公布值</b>为主序列，
+    同时给出世界银行（联合国口径）推算值作对照；净增人口由总人口前年差计算，可更新到 2025 年。
     <button id="births-refresh-btn" type="button" class="btn-refresh" style="margin-left:10px;">刷新</button>
     <span id="demo-update-time-births" class="muted" style="margin-left:10px;font-size:12px;"></span>
   </div>
@@ -4475,6 +4475,10 @@ function renderBizCycles(data) {
       h += `<div class="muted" style="font-size:11px;margin-top:4px;">`;
       h += `灰线为原始月度值，粗线为 ${c.name}平滑序列（${c.theory_months >= 200 ? 25 : c.theory_months >= 100 ? 13 : 7} 月居中均值），`;
       h += `竖虚线为检出的波谷位置。`;
+      if (c.overlay) {
+        h += `库兹涅茨图额外叠加蓝色虚线：北京/上海二手住宅价格环比链式指数均值，`;
+        h += `两条主线按共同基期 ${c.overlay.base_month}=100 归一化后比较趋势。`;
+      }
       h += `</div>`;
     }
 
@@ -4547,6 +4551,36 @@ function _drawCycleChart(containerId, c) {
     st2 = true;
   }
   svg += `<path d="${ds}" fill="none" stroke="${c.color}" stroke-width="2"/>`;
+
+  // 叠加走势：库兹涅茨周期将国房景气指数与二手房价格代理统一归一到 100
+  if (c.overlay && c.overlay.months && c.overlay.series) {
+    const om = c.overlay.months || [];
+    const ovMain = (c.overlay.series.main || []);
+    const ovSecond = (c.overlay.series.secondhand || []);
+    const ovAll = ovMain.concat(ovSecond).filter(v => v != null);
+    if (om.length && ovAll.length) {
+      let omin = Math.min(...ovAll), omax = Math.max(...ovAll);
+      let osp = (omax - omin) || 1;
+      omin -= osp * 0.1; omax += osp * 0.1; osp = omax - omin;
+      const ox = i => padL + (om.length === 1 ? plotW / 2 : plotW * i / (om.length - 1));
+      const oy = v => padT + plotH * (1 - (v - omin) / osp);
+      const drawOverlay = (vals, color, dash) => {
+        let od = "", os = false;
+        for (let i = 0; i < om.length; i++) {
+          const v = vals[i];
+          if (v == null) { os = false; continue; }
+          od += (os ? " L" : " M") + ox(i).toFixed(1) + " " + oy(v).toFixed(1);
+          os = true;
+        }
+        if (od) svg += `<path d="${od}" fill="none" stroke="${color}" stroke-width="2"${dash ? ` stroke-dasharray="${dash}"` : ""}/>`;
+      };
+      // 用更粗的两条归一化线覆盖原始尺度线，避免不同量纲共轴误读
+      drawOverlay(ovMain, c.color, "");
+      drawOverlay(ovSecond, "#0969da", "5,3");
+      svg += `<text x="${padL}" y="${padT - 4}" font-size="10" fill="#64748b">归一化(共同基期 ${c.overlay.base_month}=100)</text>`;
+    }
+  }
+
   // x 轴标签：只标年份，避免完整历史下标签互相重叠
   const step = Math.max(12, Math.round(n / 14 / 12) * 12);
   for (let i = n - 1; i >= 0; i -= step) {
@@ -4611,7 +4645,12 @@ function renderBirths(data) {
     h += `<span style="font-size:14px;color:${c};font-weight:600;">同比 ${signed(b.yoy_pct)}</span>`;
   }
   h += `</div>`;
-  h += `<div style="font-size:12px;color:#475569;margin-bottom:12px;">出生率 ${b.latest_birth_rate ?? "-"}‰（${b.latest_birth_rate_year ?? "-"} 年）</div>`;
+  h += `<div style="font-size:12px;color:#475569;margin-bottom:12px;">出生率 ${b.latest_birth_rate ?? "-"}‰（${b.latest_birth_rate_year ?? "-"} 年）`;
+  if (b.latest_net_population_wan != null) {
+    const netColor = b.latest_net_population_wan >= 0 ? "#c2410c" : "#12805c";
+    h += ` · 净增人口 <strong style="color:${netColor};">${b.latest_net_population_wan}</strong> 万（${b.latest_net_population_year} 年）`;
+  }
+  h += `</div>`;
   // 较峰值降幅进度条：条长代表当前相对峰值的水平
   if (b.peak_births_wan) {
     const pct = Math.max(0, Math.min(100, b.latest_births_wan / b.peak_births_wan * 100));
@@ -4644,9 +4683,12 @@ function renderBirths(data) {
 
   // 走势图 + 分歧表
   h += `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">`;
-  h += `<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">出生人口走势（两口径对照）</div>`;
+  h += `<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">出生人口与净增人口走势</div>`;
   h += `<div id="birthschart"></div>`;
-  h += `<div class="muted" style="font-size:11px;margin-top:4px;">蓝线为统计局公布值，灰虚线为世界银行（联合国口径）按「出生率 × 总人口」推算值。</div>`;
+  h += `<div class="muted" style="font-size:11px;margin-top:4px;">蓝线为统计局出生人口，灰虚线为世界银行出生人口推算值，红/绿线为净增人口（总人口前年差）。</div>`;
+  if (b.births_missing_note) {
+    h += `<div style="background:#fef3c7;border:1px solid #fde68a;color:#92400e;border-radius:6px;padding:8px 10px;font-size:12px;margin-top:8px;">${b.births_missing_note}</div>`;
+  }
 
   if ((b.divergence || []).length) {
     h += `<div style="font-size:13px;font-weight:600;color:#374151;margin:14px 0 6px;">两口径分歧年份（相差 ≥${b.divergence_threshold_pct}%）</div>`;
@@ -4671,6 +4713,7 @@ function renderBirths(data) {
   _drawDemoChart("birthschart", b.history.years, [
     { name: "出生人口(统计局)", values: b.history.births_wan, color: col, width: 2 },
     { name: "出生人口(世界银行)", values: b.history.births_wan_wb, color: "#94a3b8", width: 1.5, dash: "4,3" },
+    { name: "净增人口", values: b.history.net_population_wan, color: "#ef4444", width: 1.8 },
   ], { valueSuffix: " 万" });
 }
 

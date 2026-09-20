@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from demographics_analyzer import (
     _AGING_STAGES, _DIVERGENCE_PCT, _NBS_BIRTHS_WAN, _NBS_BIRTH_RATE,
     _NBS_LAST_YEAR, _REPLACEMENT_FERTILITY, _tail_years, analyze_aging,
-    analyze_births, wb_derived_births,
+    analyze_births, population_net_increase, wb_derived_births,
 )
 
 
@@ -58,13 +58,32 @@ assert 2024 not in div, "2024 年两口径一致，不应列为分歧"
 print(f"用例4 分歧标注: 2012 统计局{div[2012]['nbs']} vs 世行{div[2012]['wb']} "
       f"({div[2012]['diff_pct']:+}%): PASS")
 
-# ── 用例5：总和生育率与世代更替水平的对比 ──
+# ── 用例5：净增人口可比出生人口晚一年，且会合并到同一历史年份轴 ──
+net = population_net_increase(make_series(
+    population={2023: 1_410_700_000, 2024: 1_409_000_000, 2025: 1_406_585_000},
+))
+assert net == {2024: -170.0, 2025: -241.5}, net
+r_net = analyze_births(make_series(
+    birth_rate={2024: 6.77},
+    population={2023: 1_410_700_000, 2024: 1_409_000_000, 2025: 1_406_585_000},
+), years=20)
+assert r_net["latest_year"] == 2024
+assert r_net["latest_net_population_year"] == 2025
+assert r_net["latest_net_population_wan"] == -241.5
+assert r_net["history"]["years"][-1] == 2025, "历史轴应延伸到净增人口最新年份"
+assert r_net["history"]["births_wan"][-1] is None, "2025 出生人口缺失时应留空"
+assert r_net["history"]["net_population_wan"][-1] == -241.5
+assert r_net.get("births_missing_note"), "出生人口缺失但净增人口已更新时必须提示"
+print(f"用例5 净增人口: 2025={r_net['latest_net_population_wan']}万，"
+      f"出生人口仍截至{r_net['latest_year']}年: PASS")
+
+# ── 用例6：总和生育率与世代更替水平的对比 ──
 assert r["replacement_level"] == _REPLACEMENT_FERTILITY
 assert r["latest_fertility"] == 1.05
 assert r["fertility_gap_pct"] == -50.0, r["fertility_gap_pct"]
-print(f"用例5 生育率缺口: 1.05 对 2.1 = {r['fertility_gap_pct']}%: PASS")
+print(f"用例6 生育率缺口: 1.05 对 2.1 = {r['fertility_gap_pct']}%: PASS")
 
-# ── 用例6：内嵌表结构自检（两表年份一致、数值区间合理）──
+# ── 用例7：内嵌表结构自检（两表年份一致、数值区间合理）──
 assert set(_NBS_BIRTHS_WAN) == set(_NBS_BIRTH_RATE), "出生人口与出生率的年份必须一一对应"
 assert max(_NBS_BIRTHS_WAN) == _NBS_LAST_YEAR, "_NBS_LAST_YEAR 与表内最大年份不一致"
 assert len(_NBS_BIRTHS_WAN) >= 20, "至少需覆盖 20 年"
@@ -77,10 +96,10 @@ ratios = [_NBS_BIRTHS_WAN[y] / _NBS_BIRTH_RATE[y] for y in sorted(_NBS_BIRTHS_WA
 assert max(ratios) / min(ratios) < 1.25, (
     f"出生人口与出生率不自洽，比值区间 {min(ratios):.1f}~{max(ratios):.1f}，"
     f"可能有录入错误")
-print(f"用例6 内嵌表自检: {len(_NBS_BIRTHS_WAN)} 年、比值 "
+print(f"用例7 内嵌表自检: {len(_NBS_BIRTHS_WAN)} 年、比值 "
       f"{min(ratios):.1f}~{max(ratios):.1f}（应接近总人口/1000）: PASS")
 
-# ── 用例7：老龄化四档阶段判定（含边界值）──
+# ── 用例8：老龄化四档阶段判定（含边界值）──
 cases = [
     (6.9, "尚未进入老龄化社会"),
     (7.0, "老龄化社会"),
@@ -93,41 +112,41 @@ cases = [
 for val, expect in cases:
     a = analyze_aging(make_series(elderly_share={2024: val}), 20)
     assert a["stage"]["name"] == expect, f"{val}% -> {a['stage']['name']}，期望 {expect}"
-print(f"用例7 老龄化阶段判定（{len(cases)} 个边界）: PASS")
+print(f"用例8 老龄化阶段判定（{len(cases)} 个边界）: PASS")
 
-# ── 用例8：下一门槛与距离 ──
+# ── 用例9：下一门槛与距离 ──
 a = analyze_aging(make_series(elderly_share={2024: 14.91}), 20)
 assert a["next_stage"]["threshold"] == 20.0
 assert a["next_stage"]["gap_pct_points"] == 5.09, a["next_stage"]["gap_pct_points"]
 # 已达最高档时不应再给下一门槛
 a_top = analyze_aging(make_series(elderly_share={2024: 21.0}), 20)
 assert a_top["next_stage"] is None, a_top["next_stage"]
-print(f"用例8 下一门槛: 14.91% 距超老龄化 {a['next_stage']['gap_pct_points']} 个百分点: PASS")
+print(f"用例9 下一门槛: 14.91% 距超老龄化 {a['next_stage']['gap_pct_points']} 个百分点: PASS")
 
-# ── 用例9：门槛跨越年份取首次达到的年份 ──
+# ── 用例10：门槛跨越年份取首次达到的年份 ──
 hist = {2000: 6.8, 2001: 7.1, 2002: 7.5, 2020: 13.5, 2021: 14.2, 2022: 14.9}
 a7 = analyze_aging(make_series(elderly_share=hist), 20)
 cross = {c["threshold"]: c["year"] for c in a7["crossings"]}
 assert cross[7.0] == 2001, cross
 assert cross[14.0] == 2021, cross
 assert cross[20.0] is None, cross
-print(f"用例9 门槛跨越年份: 7%→{cross[7.0]}, 14%→{cross[14.0]}, 20%→{cross[20.0]}: PASS")
+print(f"用例10 门槛跨越年份: 7%→{cross[7.0]}, 14%→{cross[14.0]}, 20%→{cross[20.0]}: PASS")
 
-# ── 用例10：20 年变化幅度 ──
+# ── 用例11：20 年变化幅度 ──
 assert a7["change_pct_points"] == round(14.9 - 6.8, 2), a7["change_pct_points"]
 assert a7["start_year"] == 2000
-print(f"用例10 区间变化: +{a7['change_pct_points']} 个百分点: PASS")
+print(f"用例11 区间变化: +{a7['change_pct_points']} 个百分点: PASS")
 
-# ── 用例11：老龄化数据缺失时降级 ──
+# ── 用例12：老龄化数据缺失时降级 ──
 assert analyze_aging(make_series(elderly_share={}), 20).get("error")
-print("用例11 老龄化数据缺失降级: PASS")
+print("用例12 老龄化数据缺失降级: PASS")
 
-# ── 用例12：阶段门槛表单调递增，且每档都有文案 ──
+# ── 用例13：阶段门槛表单调递增，且每档都有文案 ──
 thr = [t for t, _n, _c, _d in _AGING_STAGES]
 assert thr == sorted(thr), thr
 for t, n, c, dsc in _AGING_STAGES:
     assert n and c.startswith("#") and dsc, (t, n, c, dsc)
-print("用例12 门槛表单调且文案齐备: PASS")
+print("用例13 门槛表单调且文案齐备: PASS")
 
 print("\n全部单元用例通过")
 

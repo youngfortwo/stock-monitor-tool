@@ -149,15 +149,40 @@ def wb_derived_births(series: dict[str, dict[int, float]]) -> dict[int, float]:
     }
 
 
+def population_net_increase(series: dict[str, dict[int, float]]) -> dict[int, float]:
+    """中国净增人口（万人）= 当年总人口 - 上年总人口。
+
+    总人口序列在世界银行中通常比出生率早更新一年，因此 2025 年可展示净增人口，
+    但没有出生率/出生人口。把两者合并到一张图时必须允许年份轴不完全重合。
+    """
+    pop = series.get("population") or {}
+    out: dict[int, float] = {}
+    years = sorted(pop)
+    for i in range(1, len(years)):
+        y, prev = years[i], years[i - 1]
+        out[y] = round((pop[y] - pop[prev]) / 10000, 1)
+    return out
+
+
 def analyze_births(series: dict[str, dict[int, float]], years: int = 20) -> dict[str, Any]:
     """新生儿统计。主序列取统计局公布值，世行口径作对照并标出分歧年份。"""
     fert = series.get("fertility") or {}
     wb_births = wb_derived_births(series)
+    net_pop = population_net_increase(series)
 
     if not _NBS_BIRTHS_WAN:
         return {"error": "出生人口数据不可用"}
 
-    win = _tail_years(_NBS_BIRTHS_WAN, years)
+    # 图表年份轴覆盖出生人口与净增人口的并集。这样在出生率尚未更新到 2025 时，
+    # 页面仍能显示 2025 年净增人口，而出生人口自然留空。
+    axis_years = sorted(set(_tail_years(_NBS_BIRTHS_WAN, years)[i][0]
+                            for i in range(len(_tail_years(_NBS_BIRTHS_WAN, years))))
+                        | set(_tail_years(net_pop, years)[i][0]
+                              for i in range(len(_tail_years(net_pop, years)))))
+    if len(axis_years) > years:
+        axis_years = axis_years[-years:]
+
+    win = [(y, _NBS_BIRTHS_WAN[y]) for y in axis_years if y in _NBS_BIRTHS_WAN]
     y_latest, v_latest = win[-1]
     peak_year, peak_val = max(win, key=lambda kv: kv[1])
     trough_year, trough_val = min(win, key=lambda kv: kv[1])
@@ -166,9 +191,11 @@ def analyze_births(series: dict[str, dict[int, float]], years: int = 20) -> dict
     yoy = round((v_latest / prev - 1) * 100, 1) if prev else None
     from_peak = round((v_latest / peak_val - 1) * 100, 1) if peak_val else None
 
-    rate_win = _tail_years(_NBS_BIRTH_RATE, years)
+    rate_win = [(y, _NBS_BIRTH_RATE[y]) for y in axis_years if y in _NBS_BIRTH_RATE]
     fert_win = _tail_years(fert, years)
     fert_latest = fert_win[-1] if fert_win else None
+    net_win = [(y, net_pop[y]) for y in axis_years if y in net_pop]
+    net_latest = net_win[-1] if net_win else None
 
     # 两口径分歧：同年相差超过阈值的列出来，避免读者以为只有一套数
     divergence = []
@@ -193,14 +220,17 @@ def analyze_births(series: dict[str, dict[int, float]], years: int = 20) -> dict
         "trough_births_wan": trough_val,
         "latest_birth_rate": rate_win[-1][1] if rate_win else None,
         "latest_birth_rate_year": rate_win[-1][0] if rate_win else None,
+        "latest_net_population_wan": net_latest[1] if net_latest else None,
+        "latest_net_population_year": net_latest[0] if net_latest else None,
         "divergence": divergence,
         "divergence_threshold_pct": _DIVERGENCE_PCT,
         "history": {
-            "years": [y for y, _ in win],
-            "births_wan": [v for _, v in win],
-            "births_wan_wb": [wb_births.get(y) for y, _ in win],
-            "birth_rate": [dict(rate_win).get(y) for y, _ in win],
-            "fertility": [dict(fert_win).get(y) for y, _ in win],
+            "years": axis_years,
+            "births_wan": [_NBS_BIRTHS_WAN.get(y) for y in axis_years],
+            "births_wan_wb": [wb_births.get(y) for y in axis_years],
+            "net_population_wan": [net_pop.get(y) for y in axis_years],
+            "birth_rate": [dict(rate_win).get(y) for y in axis_years],
+            "fertility": [dict(fert_win).get(y) for y in axis_years],
         },
     }
 
@@ -210,6 +240,12 @@ def analyze_births(series: dict[str, dict[int, float]], years: int = 20) -> dict
         result["nbs_stale"] = (
             f"统计局内嵌数据截至 {_NBS_LAST_YEAR} 年，而世界银行已有 {wb_last} 年数据，"
             f"请补录 {_NBS_LAST_YEAR + 1} 年及以后的统计公报数值"
+        )
+    pop_last = max(net_pop) if net_pop else None
+    if pop_last and pop_last > y_latest:
+        result["births_missing_note"] = (
+            f"{pop_last} 年总人口已更新，可计算净增人口；但出生率/统计公报出生人口"
+            f"最新仍为 {y_latest} 年，所以出生人口曲线在 {pop_last} 年为空。"
         )
     if fert_latest:
         fy, fv = fert_latest

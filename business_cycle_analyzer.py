@@ -121,6 +121,8 @@ _CYCLES: dict[str, dict[str, Any]] = {
         "indicator_note": (
             "国房景气指数自 1998 年起可得，仅覆盖约 1.5 个理论循环，"
             "不足以统计验证周期长度。该序列更新偏滞后，注意数据月份。"
+            "图中合并的二手住宅价格为北京/上海二手房环比链式指数均值，"
+            "是核心城市代理口径，不是全国 70 城汇总。"
         ),
         "corroborator": None,
         "phase_names": {
@@ -253,6 +255,53 @@ def _fetch_real_estate_index() -> list[tuple[str, float]]:
     return _series_from_df(ak.macro_china_real_estate(), "日期", "最新值")
 
 
+def _fetch_secondhand_house_price_proxy() -> list[tuple[str, float]]:
+    """北京/上海二手住宅价格环比链式指数均值（核心城市代理口径）。
+
+    akshare 当前暴露的 macro_china_new_house_price 只有北京、上海两座城市，不含全国
+    70 城汇总。该接口自 2021 年后定基指数为空，但环比指数仍持续更新，因此用
+    二手住宅价格指数-环比（上月=100）滚动累乘得到链式价格指数，再取京沪均值。
+    初始月归一为 100，后续仅用于趋势观察。
+    """
+    import akshare as ak
+
+    df = ak.macro_china_new_house_price()
+    if df is None or getattr(df, "empty", True):
+        return []
+    rows_by_city: dict[str, list[tuple[str, float]]] = {}
+    for _, r in df.iterrows():
+        city = str(r.get("城市", "")).strip()
+        try:
+            mom = float(r["二手住宅价格指数-环比"])
+        except (ValueError, TypeError, KeyError):
+            continue
+        if mom != mom:
+            continue
+        rows_by_city.setdefault(city, []).append((_norm_month(r["日期"]), mom))
+
+    chained: dict[str, dict[str, float]] = {}
+    for city, rows in rows_by_city.items():
+        rows.sort(key=lambda x: x[0])
+        level = 100.0
+        city_map: dict[str, float] = {}
+        for i, (month, mom) in enumerate(rows):
+            if i > 0:
+                level *= mom / 100.0
+            city_map[month] = round(level, 3)
+        if city_map:
+            chained[city] = city_map
+
+    if not chained:
+        return []
+    months = sorted({m for mp in chained.values() for m in mp})
+    out: list[tuple[str, float]] = []
+    for month in months:
+        vals = [mp[month] for mp in chained.values() if month in mp]
+        if vals:
+            out.append((month, round(sum(vals) / len(vals), 3)))
+    return out
+
+
 _FETCHERS = {
     "kitchin": _fetch_ppi_yoy,
     "juglar": _fetch_fai_yoy,
@@ -310,6 +359,33 @@ def _percentile(values: list[float], current: float) -> float:
     return round((below + equal / 2) / len(values) * 100, 1)
 
 
+def _normalise_to_common_base(series_map: dict[str, list[tuple[str, float]]]) -> dict[str, Any]:
+    """把多条月度序列按共同起点归一到 100，便于同图比较走势。
+
+    用于库兹涅茨：国房景气指数和二手房链式指数量纲不同，直接共用一个 y 轴会误导。
+    取所有序列都有数据的最早月份作为共同基期。
+    """
+    if not series_map:
+        return {"base_month": None, "series": {}}
+    maps = {k: dict(v) for k, v in series_map.items() if v}
+    if len(maps) < 2:
+        return {"base_month": None, "series": {}}
+    common = sorted(set.intersection(*(set(mp) for mp in maps.values())))
+    if not common:
+        return {"base_month": None, "series": {}}
+    base_month = common[0]
+    out: dict[str, list[tuple[str, float | None]]] = {}
+    months = sorted(set.union(*(set(mp) for mp in maps.values())))
+    for name, mp in maps.items():
+        base = mp.get(base_month)
+        vals: list[tuple[str, float | None]] = []
+        for m in months:
+            v = mp.get(m)
+            vals.append((m, round(v / base * 100, 3) if v is not None and base else None))
+        out[name] = vals
+    return {"base_month": base_month, "months": months, "series": out}
+
+
 def _classify_phase(pct: float, direction: str, phase_names: dict[str, str]) -> tuple[str, str]:
     """(水平分位, 方向) → (阶段 key, 阶段名)。分位 50 为高低分界。"""
     high = pct >= 50
@@ -323,7 +399,8 @@ def _classify_phase(pct: float, direction: str, phase_names: dict[str, str]) -> 
 
 
 def analyze_cycle(cycle_key: str, series: list[tuple[str, float]],
-                  corroborator: list[tuple[str, float]] | None = None) -> dict[str, Any]:
+                  corroborator: list[tuple[str, float]] | None = None,
+                  overlays: dict[str, list[tuple[str, float]]] | None = None) -> dict[str, Any]:
     """单个周期的完整分析：实测周期长度 + 当前阶段 + 数据充分性。"""
     cfg = _CYCLES[cycle_key]
     theory = cfg["theory_months"]
@@ -434,6 +511,20 @@ def analyze_cycle(cycle_key: str, series: list[tuple[str, float]],
             "agrees": c_dir == direction,
         }
 
+    # ── 叠加走势（库兹涅茨：国房景气 vs 二手房价格代理）──
+    if overlays:
+        norm = _normalise_to_common_base({"main": series, **overlays})
+        if norm.get("base_month"):
+            result["overlay"] = {
+                "base_month": norm["base_month"],
+                "note": "各序列按共同起点归一为 100，仅比较趋势，不比较绝对水平",
+                "months": norm["months"],
+                "series": {
+                    name: [v for _, v in vals]
+                    for name, vals in norm["series"].items()
+                },
+            }
+
     # ── 完整历史序列（前端画走势用，含平滑值）──
     # 不做截断：截断会把早期波谷挡在窗口外，前端按月份定位波谷竖线时找不到对应
     # 位置，检出的周期在图上看不见——这正是"周期不够长"的观感来源。
@@ -456,11 +547,16 @@ def analyze_business_cycles() -> dict[str, Any]:
         ),
     }
     corr = _with_retry(_fetch_industrial_yoy)
+    secondhand = _with_retry(_fetch_secondhand_house_price_proxy)
     # 由大到小排列，与侧边栏各周期模块的顺序一致
     for key in ["kuznets", "juglar", "kitchin"]:
         series = _with_retry(_FETCHERS[key])
         out["cycles"].append(
-            analyze_cycle(key, series, corr if key == "kitchin" else None)
+            analyze_cycle(
+                key, series,
+                corr if key == "kitchin" else None,
+                {"secondhand": secondhand} if key == "kuznets" and secondhand else None,
+            )
         )
 
     ok = [c for c in out["cycles"] if not c.get("error")]

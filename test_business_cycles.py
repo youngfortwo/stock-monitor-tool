@@ -11,8 +11,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from business_cycle_analyzer import (
-    _CYCLES, _classify_phase, _find_troughs, _norm_month, _percentile,
-    _smooth, analyze_cycle,
+    _CYCLES, _classify_phase, _find_troughs, _normalise_to_common_base,
+    _norm_month, _percentile, _smooth, analyze_cycle,
 )
 
 
@@ -132,7 +132,7 @@ assert r10["corroborator"]["agrees"] is True, r10["corroborator"]
 print(f"用例10 佐证指标: 方向={r10['corroborator']['direction']} "
       f"一致={r10['corroborator']['agrees']}: PASS")
 
-# ── 用例12：阶段含义字段齐备，且四阶段序列恰有一个当前项 ──
+# ── 用例11：阶段含义字段齐备，且四阶段序列恰有一个当前项 ──
 r12 = analyze_cycle("kitchin", sine_series(40, 200))
 for k in ["phase_desc", "phase_implication", "phase_risk", "next_phase_name",
           "phase_sequence"]:
@@ -147,7 +147,7 @@ assert all(p.get("desc") for p in seq), "每个阶段都要有说明文案"
 order = [p["key"] for p in seq]
 nxt_key = order[(order.index(cur[0]["key"]) + 1) % 4]
 assert r12["next_phase_name"] == seq[order.index(nxt_key)]["name"]
-print(f"用例12 阶段含义与序列: 当前={cur[0]['name']} 下一={r12['next_phase_name']} "
+print(f"用例11 阶段含义与序列: 当前={cur[0]['name']} 下一={r12['next_phase_name']} "
       f"风险={r12['phase_risk']}: PASS")
 
 # 三个周期的四阶段文案都要配齐，避免新增周期时漏写
@@ -157,16 +157,35 @@ for _ck, _cfg in _CYCLES.items():
         assert _pd.get("desc") and _pd.get("implication") and _pd.get("risk"), f"{_ck}/{_pk}"
 print("用例12b 三周期文案齐备: PASS")
 
-# ── 用例13：历史序列不截断，检出的波谷必须都能在图上定位 ──
+# ── 用例12：历史序列不截断，检出的波谷必须都能在图上定位 ──
 r13 = analyze_cycle("kitchin", sine_series(40, 248))
 hm = r13["history"]["months"]
 assert len(hm) == 248, f"历史被截断到 {len(hm)} 期"
 assert len(r13["history"]["values"]) == len(r13["history"]["smoothed"]) == 248
 missing = [t for t in r13["troughs"] if t not in hm]
 assert not missing, f"波谷 {missing} 落在图表窗口外，竖线将无法绘制"
-print(f"用例13 完整历史与波谷可定位: {len(hm)} 期、{len(r13['troughs'])} 个波谷全部在窗口内: PASS")
+print(f"用例12 完整历史与波谷可定位: {len(hm)} 期、{len(r13['troughs'])} 个波谷全部在窗口内: PASS")
 
-# ── 用例11：_with_retry 对"成功但返回空"也要重试 ──
+# ── 用例13：库兹涅茨叠加线按共同基期归一，不能直接混用不同量纲 ──
+norm = _normalise_to_common_base({
+    "main": [("2020-01", 90.0), ("2020-02", 99.0), ("2020-03", 108.0)],
+    "secondhand": [("2020-02", 200.0), ("2020-03", 210.0), ("2020-04", 220.0)],
+})
+assert norm["base_month"] == "2020-02", norm
+assert norm["series"]["main"] == [("2020-01", round(90.0 / 99.0 * 100, 3)),
+                                  ("2020-02", 100.0),
+                                  ("2020-03", round(108.0 / 99.0 * 100, 3)),
+                                  ("2020-04", None)]
+assert norm["series"]["secondhand"] == [("2020-01", None), ("2020-02", 100.0),
+                                        ("2020-03", 105.0), ("2020-04", 110.0)]
+r14 = analyze_cycle("kuznets", [("2020-01", 90.0), ("2020-02", 99.0), ("2020-03", 108.0)],
+                    overlays={"secondhand": [("2020-02", 200.0), ("2020-03", 210.0)]})
+assert r14["overlay"]["base_month"] == "2020-02"
+assert "main" in r14["overlay"]["series"] and "secondhand" in r14["overlay"]["series"]
+print(f"用例13 叠加线共同基期归一: base={norm['base_month']}，"
+      f"main={norm['series']['main'][1][1]} secondhand={norm['series']['secondhand'][1][1]}: PASS")
+
+# ── 用例14：_with_retry 对"成功但返回空"也要重试 ──
 # 限流时 akshare 返回空 DataFrame 而不抛异常，只对异常重试会导致静默降级
 import business_cycle_analyzer as _bc
 
@@ -203,7 +222,7 @@ def _raises_then_ok():
 
 
 assert _bc._with_retry(_raises_then_ok, attempts=3, wait=0) == [("2026-01", 2.0)]
-print(f"用例11 空结果与异常均重试: 空→成功用了{calls['n']}次，"
+print(f"用例14 空结果与异常均重试: 空→成功用了{calls['n']}次，"
       f"全空用满{always_empty['n']}次: PASS")
 
 print("\n全部单元用例通过")
