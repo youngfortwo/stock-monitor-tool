@@ -224,18 +224,23 @@ def _locate_phase(year: int) -> dict[str, Any]:
 
 
 def _with_retry(fn, attempts: int = 3, wait: float = 1.0):
-    """akshare 上游偶发 JSON 解码失败/限流，重试后多能成功。
+    """取数重试。异常与"成功但结果为空"都要重试。
 
-    全部失败时返回空列表而非抛出：单个指标缺失只降低置信度，不应让整个分析失败。
+    限流时 akshare 常常不抛异常、而是返回空 DataFrame。若只对异常重试，空结果会
+    静默降级且日志无线索。全部失败时返回空列表而非抛出：单个指标缺失只降低置信度，
+    不应让整个分析失败。
     """
     last = None
     for i in range(attempts):
         try:
-            return fn()
+            out = fn()
+            if out:
+                return out
+            last = "返回空结果（通常是上游限流）"
         except Exception as exc:
             last = exc
-            if i < attempts - 1:
-                time.sleep(wait * (i + 1))
+        if i < attempts - 1:
+            time.sleep(wait * (i + 1))
     print(f"[kondratiev] {getattr(fn, '__name__', fn)} 取数失败（重试{attempts}次）: {last}")
     return []
 

@@ -1229,6 +1229,10 @@ from financial_filter import load_cache
 _KONDRATIEV_CACHE = None
 _KONDRATIEV_CACHE_DATE = None
 
+# 中短周期（基钦/朱格拉/库兹涅茨）缓存：底层均为月度数据，按日缓存即可
+_BIZCYCLE_CACHE = None
+_BIZCYCLE_CACHE_DATE = None
+
 _RPS_CACHE: dict[str, float] = {}
 _RPS_CACHE_TS = 0.0
 
@@ -2647,6 +2651,9 @@ class StockHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/kondratiev":
             self.handle_kondratiev(parsed.query)
             return
+        if parsed.path == "/api/business_cycles":
+            self.handle_business_cycles(parsed.query)
+            return
         if parsed.path == "/api/equity_bond_spread":
             self.handle_equity_bond_spread(parsed.query)
             return
@@ -3123,6 +3130,35 @@ class StockHandler(SimpleHTTPRequestHandler):
             result = analyze_kondratiev()
             _KONDRATIEV_CACHE = result
             _KONDRATIEV_CACHE_DATE = today
+            self.write_json(result)
+        except Exception as exc:
+            traceback.print_exc()
+            self.write_json({"error": str(exc)}, status=500)
+
+    def handle_business_cycles(self, query: str = "") -> None:
+        """GET /api/business_cycles：基钦/朱格拉/库兹涅茨三周期当前阶段与实测周期长度。"""
+        global _BIZCYCLE_CACHE, _BIZCYCLE_CACHE_DATE
+        import datetime as _dt
+        params = parse_qs(query)
+        force = params.get("force", ["false"])[0].lower() == "true"
+        today = _dt.date.today().isoformat()
+        if not force and _BIZCYCLE_CACHE is not None and _BIZCYCLE_CACHE_DATE == today:
+            self.write_json(_BIZCYCLE_CACHE)
+            return
+        try:
+            from business_cycle_analyzer import analyze_business_cycles
+        except Exception as exc:
+            traceback.print_exc()
+            self.write_json(
+                {"error": f"business_cycle_analyzer 模块加载失败：{exc}。"
+                          f"请确认 business_cycle_analyzer.py 已部署到服务端同目录"},
+                status=500,
+            )
+            return
+        try:
+            result = analyze_business_cycles()
+            _BIZCYCLE_CACHE = result
+            _BIZCYCLE_CACHE_DATE = today
             self.write_json(result)
         except Exception as exc:
             traceback.print_exc()

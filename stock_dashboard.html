@@ -1272,6 +1272,7 @@ tr.zt-expand-row > td {
   <ul class="sidebar-nav">
     <li><a href="#cpi-ppi"><span class="nav-icon">📈</span>CPI/PPI</a></li>
     <li><a href="#kondratiev"><span class="nav-icon">🌊</span>康波周期</a></li>
+    <li><a href="#business-cycles"><span class="nav-icon">🔄</span>经济周期</a></li>
   </ul>
   <div class="sidebar-divider"></div>
   <div class="sidebar-section-label">选股策略</div>
@@ -1566,6 +1567,23 @@ tr.zt-expand-row > td {
   </div>
 </section>
 </div><!-- /page-kondratiev -->
+
+<!-- ===== 经济周期（基钦/朱格拉/库兹涅茨）===== -->
+<div id="page-business-cycles" class="page">
+<section class="tool-panel" id="sec-business-cycles">
+  <h2>经济周期</h2>
+  <div class="muted" style="margin-bottom: 10px;">
+    基钦周期（库存，约 3~4 年）、朱格拉周期（设备投资，约 8~10 年）、库兹涅茨周期（建筑/房地产，约 18~20 年）。
+    与康波不同，这三个周期足够短、历史里有多个完整循环，因此阶段<b>直接由指标自身的波动位置推导</b>
+    （水平分位 × 变化方向），周期长度也由波谷间隔<b>实测</b>后与理论值对比，不使用手写日历表。
+    <button id="bizcycle-refresh-btn" type="button" class="btn-refresh" style="margin-left:10px;">刷新</button>
+    <span id="bizcycle-update-time" class="muted" style="margin-left:10px;font-size:12px;"></span>
+  </div>
+  <div id="bizcycle-result">
+    <div class="muted" style="padding:12px;">加载中...</div>
+  </div>
+</section>
+</div><!-- /page-business-cycles -->
 
 <!-- ===== 个股综合分析 ===== -->
 <div id="page-analysis" class="page">
@@ -4261,6 +4279,179 @@ document.addEventListener("DOMContentLoaded", () => {
   const btn = document.getElementById("kondratiev-refresh-btn");
   if (btn) btn.addEventListener("click", () => loadKondratiev(true));
   loadKondratiev();
+});
+
+// ─── 经济周期（基钦 / 朱格拉 / 库兹涅茨）────────────────────────
+async function loadBizCycles(force = false) {
+  const box = document.getElementById("bizcycle-result");
+  const timeEl = document.getElementById("bizcycle-update-time");
+  try {
+    const url = "/api/business_cycles" + (force ? "?force=true" : "");
+    const resp = await fetch(url, { cache: "no-store" });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    if (timeEl) timeEl.textContent = `更新时间: ${data.generated_at || "-"}`;
+    renderBizCycles(data);
+  } catch (e) {
+    if (box) box.innerHTML = `<div class="muted" style="padding:12px;color:#c2410c;">经济周期加载失败: ${e.message}</div>`;
+  }
+}
+
+function renderBizCycles(data) {
+  const box = document.getElementById("bizcycle-result");
+  if (!box) return;
+  const cycles = data.cycles || [];
+  if (!cycles.length) {
+    box.innerHTML = '<div class="muted" style="padding:12px;">暂无数据</div>';
+    return;
+  }
+
+  const dirColor = d => (d === "上行" ? "#c2410c" : d === "下行" ? "#12805c" : "#657188");
+  let h = "";
+
+  cycles.forEach(c => {
+    const col = c.color || "#657188";
+    h += `<div style="background:#fff;border:1px solid #e2e8f0;border-left:4px solid ${col};border-radius:12px;padding:16px;margin-bottom:14px;">`;
+    h += `<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:10px;">`;
+    h += `<span style="font-size:15px;font-weight:700;color:${col};">${c.name}<span style="font-size:12px;color:#657188;font-weight:400;"> · ${c.subtitle}</span></span>`;
+    h += `<span class="muted" style="font-size:12px;">理论周期 ${c.theory_label || "-"}</span>`;
+    h += `</div>`;
+
+    if (c.error) {
+      h += `<div class="muted" style="font-size:12px;color:#c2410c;">数据源不可用：${c.error}</div></div>`;
+      return;
+    }
+
+    // 当前阶段 + 指标现值
+    h += `<div style="display:flex;flex-wrap:wrap;gap:20px;align-items:baseline;margin-bottom:10px;">`;
+    h += `<span style="font-size:22px;font-weight:700;color:${col};">${c.phase_name}</span>`;
+    h += `<span style="font-size:13px;">${c.indicator}：<strong>${c.latest_value}</strong>`;
+    h += `<span class="muted"> (${c.latest_month})</span></span>`;
+    h += `<span style="font-size:13px;">历史分位 <strong>${c.percentile}%</strong></span>`;
+    h += `<span style="font-size:13px;color:${dirColor(c.direction)};">方向 <strong>${c.direction}</strong>`;
+    h += `<span class="muted" style="font-size:11px;"> (回看${c.direction_lookback_months}月)</span></span>`;
+    h += `</div>`;
+
+    // 周期长度实测 vs 理论
+    h += `<table style="width:100%;font-size:12px;margin-bottom:8px;"><tbody>`;
+    h += `<tr><td class="muted" style="width:120px;">实测周期长度</td><td>`;
+    if (c.measured_cycle_months != null) {
+      const dev = c.theory_deviation_pct;
+      const devColor = Math.abs(dev) <= 15 ? "#22c55e" : Math.abs(dev) <= 30 ? "#f59e0b" : "#ef4444";
+      h += `<strong>${c.measured_cycle_months} 个月</strong>`;
+      h += ` <span style="color:${devColor};">（偏离理论 ${dev > 0 ? "+" : ""}${dev}%）</span>`;
+      h += ` <span class="muted">各段间隔 ${(c.measured_intervals_months || []).join(" / ")} 个月</span>`;
+    } else {
+      h += `<span class="muted">${c.measured_note || "无法实测"}</span>`;
+    }
+    h += `</td></tr>`;
+    h += `<tr><td class="muted">数据区间</td><td>${c.range}（${c.months} 期，约 ${c.complete_cycles_in_data} 个完整循环）</td></tr>`;
+    if (c.troughs && c.troughs.length) {
+      h += `<tr><td class="muted">检出波谷</td><td>${c.troughs.join(" → ")}</td></tr>`;
+    }
+    if (c.months_since_trough != null) {
+      h += `<tr><td class="muted">距上一波谷</td><td>${c.months_since_trough} 个月（${c.last_trough_month}），周期进度约 ${c.cycle_progress_pct}%</td></tr>`;
+    }
+    if (c.corroborator) {
+      const k = c.corroborator;
+      const agColor = k.agrees ? "#22c55e" : "#f59e0b";
+      h += `<tr><td class="muted">佐证指标</td><td>${k.label}：${k.value}（${k.month}）分位 ${k.percentile}%，方向 <span style="color:${dirColor(k.direction)};">${k.direction}</span> · <span style="color:${agColor};">与核心指标${k.agrees ? "一致" : "不一致"}</span></td></tr>`;
+    }
+    h += `</tbody></table>`;
+
+    // 走势图
+    if (c.history && (c.history.months || []).length) {
+      h += `<div id="bizchart-${c.key}"></div>`;
+    }
+
+    if (c.data_warning) {
+      h += `<div style="background:#fef3c7;border:1px solid #fde68a;color:#92400e;border-radius:6px;padding:8px 10px;font-size:12px;margin-top:8px;">${c.data_warning}</div>`;
+    }
+    h += `<div class="muted" style="font-size:11px;margin-top:8px;line-height:1.6;">${c.indicator_note || ""}</div>`;
+    h += `</div>`;
+  });
+
+  if (data.summary) {
+    h += `<div style="background:#f8fafc;border-left:3px solid #0969da;padding:10px 14px;border-radius:0 8px 8px 0;font-size:13px;color:#374151;line-height:1.6;margin-bottom:10px;">${data.summary}</div>`;
+  }
+  h += `<div class="muted" style="font-size:11px;line-height:1.6;">${data.method || ""}</div>`;
+  box.innerHTML = h;
+
+  // 走势图需在 innerHTML 写入后绘制（依赖容器已存在）
+  cycles.forEach(c => {
+    if (c.error || !c.history) return;
+    _drawCycleChart(`bizchart-${c.key}`, c);
+  });
+}
+
+function _drawCycleChart(containerId, c) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const months = c.history.months || [];
+  const raw = c.history.values || [];
+  const sm = c.history.smoothed || [];
+  const n = months.length;
+  if (!n) return;
+
+  const W = 860, H = 200, padL = 46, padR = 12, padT = 14, padB = 30;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const all = raw.concat(sm).filter(v => v != null);
+  if (!all.length) return;
+  let minV = Math.min(...all), maxV = Math.max(...all);
+  let span = (maxV - minV) || 1;
+  minV -= span * 0.1; maxV += span * 0.1;
+  span = maxV - minV;
+
+  const x = i => padL + (n === 1 ? plotW / 2 : plotW * i / (n - 1));
+  const y = v => padT + plotH * (1 - (v - minV) / span);
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto;background:#fff;border:1px solid #e8edf4;border-radius:8px;margin-top:6px;">`;
+  // y 轴
+  for (let t = 0; t <= 4; t++) {
+    const val = minV + span * t / 4;
+    const yy = padT + plotH * (1 - t / 4);
+    svg += `<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W - padR}" y2="${yy.toFixed(1)}" stroke="#eef2f7" stroke-width="1"/>`;
+    svg += `<text x="${padL - 5}" y="${(yy + 4).toFixed(1)}" text-anchor="end" font-size="10" fill="#657188">${val.toFixed(1)}</text>`;
+  }
+  // 零线（同比类指标的关键分界）
+  if (minV < 0 && maxV > 0) {
+    svg += `<line x1="${padL}" y1="${y(0).toFixed(1)}" x2="${W - padR}" y2="${y(0).toFixed(1)}" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="3,3"/>`;
+  }
+  // 波谷竖线
+  (c.troughs || []).forEach(tm => {
+    const i = months.indexOf(tm);
+    if (i < 0) return;
+    svg += `<line x1="${x(i).toFixed(1)}" y1="${padT}" x2="${x(i).toFixed(1)}" y2="${(padT + plotH).toFixed(1)}" stroke="${c.color}" stroke-width="1" stroke-dasharray="2,3" opacity="0.6"/>`;
+  });
+  // 原始序列
+  let d = "", started = false;
+  for (let i = 0; i < n; i++) {
+    if (raw[i] == null) { started = false; continue; }
+    d += (started ? " L" : " M") + x(i).toFixed(1) + " " + y(raw[i]).toFixed(1);
+    started = true;
+  }
+  svg += `<path d="${d}" fill="none" stroke="#cbd5e1" stroke-width="1.2"/>`;
+  // 平滑序列
+  let ds = "", st2 = false;
+  for (let i = 0; i < n; i++) {
+    if (sm[i] == null) { st2 = false; continue; }
+    ds += (st2 ? " L" : " M") + x(i).toFixed(1) + " " + y(sm[i]).toFixed(1);
+    st2 = true;
+  }
+  svg += `<path d="${ds}" fill="none" stroke="${c.color}" stroke-width="2"/>`;
+  // x 轴标签
+  const step = Math.max(1, Math.round(n / 10));
+  for (let i = 0; i < n; i += step) {
+    svg += `<text x="${x(i).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="9" fill="#657188">${months[i]}</text>`;
+  }
+  svg += `</svg>`;
+  el.innerHTML = svg;
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const btn = document.getElementById("bizcycle-refresh-btn");
+  if (btn) btn.addEventListener("click", () => loadBizCycles(true));
+  loadBizCycles();
 });
 
 document.addEventListener("DOMContentLoaded", () => {
