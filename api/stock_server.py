@@ -1244,6 +1244,9 @@ _BIZCYCLE_CACHE_DATE = None
 _DEMOGRAPHICS_CACHE = None
 _DEMOGRAPHICS_CACHE_DATE = None
 
+_REAL_ESTATE_CACHE = None
+_REAL_ESTATE_CACHE_DATE = None
+
 _RPS_CACHE: dict[str, float] = {}
 _RPS_CACHE_TS = 0.0
 
@@ -1483,6 +1486,39 @@ def _save_industry_rank_snapshot(date_str: str, boards: list[dict], source: str)
         print(f"[industry_rank] 保存快照失败 {date_str}: {exc}", file=sys.stderr)
 
 
+def _load_latest_industry_rank_snapshot() -> dict | None:
+    """读取最近一份行业板块每日快照，作为 push2 不可用时的回退数据。
+
+    快照日期等于今天时写入内存缓存（内容与实时拉取一致）；旧快照不缓存，
+    保证下一个请求仍会重试 push2。
+    """
+    try:
+        files = sorted(_industry_rank_history_dir().glob("*.json"), reverse=True)
+        for path in files:
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            boards = payload.get("boards") or []
+            if not boards:
+                continue
+            date_str = payload.get("date") or path.stem
+            result = {
+                "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "source": f"snapshot:{date_str}",
+                "total": len(boards),
+                "boards": boards,
+                "date": date_str,
+            }
+            if date_str == _latest_trading_date():
+                _industry_rank_cache["data"] = result
+                _industry_rank_cache["date"] = date_str
+            return result
+    except Exception as exc:
+        print(f"[industry_rank] 读取快照失败: {exc}", file=sys.stderr)
+    return None
+
+
 def _compute_board_avg_rank(snapshots: list[dict]) -> dict:
     """计算每个板块在给定快照中的平均排名（行业/概念通用）。
 
@@ -1632,7 +1668,11 @@ def _fetch_industry_board_rank(refresh: bool = False) -> dict:
     # ── 东财 push2（唯一数据源）──
     boards = _fetch_industry_rank_eastmoney(session)
     if not boards:
-        raise RuntimeError("行业板块接口不可用（东财 push2 请求失败）")
+        # push2 被限流/封禁时回退到最近一份每日快照，避免整个面板 500
+        fallback = _load_latest_industry_rank_snapshot()
+        if fallback:
+            return fallback
+        raise RuntimeError("行业板块接口不可用（东财 push2 请求失败，且无历史快照）")
 
     # ── 涨停股池挂到对应板块 ──
     # 涨停池 hybk 字段粒度偏粗（如 PCB/被动元件/分立器件 都归到「元件」），
@@ -2670,8 +2710,14 @@ class StockHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/business_cycles":
             self.handle_business_cycles(parsed.query)
             return
+        if parsed.path == "/api/cycle_model":
+            self.handle_cycle_model(parsed.query)
+            return
         if parsed.path == "/api/demographics":
             self.handle_demographics(parsed.query)
+            return
+        if parsed.path == "/api/real-estate":
+            self.handle_real_estate(parsed.query)
             return
         if parsed.path == "/api/equity_bond_spread":
             self.handle_equity_bond_spread(parsed.query)
@@ -3183,6 +3229,69 @@ class StockHandler(SimpleHTTPRequestHandler):
             traceback.print_exc()
             self.write_json({"error": str(exc)}, status=500)
 
+    def handle_cycle_model(self, query: str = "") -> None:
+        """GET /api/cycle_model：四周期（康波/库兹涅茨/朱格拉/基钦）理论正弦模型。
+
+        用各周期长度生成以 0 为中枢、-1~+1 为上下限的理论波形，并给出综合景气线。
+        用于在四周期走势总览中展示类似「康波+库兹涅茨+朱格拉+基钦」的叠加模型图。
+        """
+        import datetime as _dt
+        import math
+        params = parse_qs(query)
+        start_year = 1980
+        end_year = 2060
+        try:
+            start_year = max(1800, min(2100, int(params.get("start", ["1980"])[0])))
+            end_year = max(1800, min(2100, int(params.get("end", ["2060"])[0])))
+        except (ValueError, TypeError):
+            pass
+        if end_year <= start_year:
+            end_year = start_year + 80
+
+        # 周期定义：起点年份对应波谷（-1），之后按正弦上行
+        cycles = [
+            {"key": "kondratievi", "name": "康波", "period": 55.0, "start": 2015, "color": "#6366f1", "desc": "55年技术革命周期"},
+            {"key": "kuznets", "name": "库兹涅茨", "period": 20.0, "start": 2020, "color": "#f59e0b", "desc": "20年地产/建筑周期"},
+            {"key": "juglar", "name": "朱格拉", "period": 9.0, "start": 2022, "color": "#10b981", "desc": "9年资本支出周期"},
+            {"key": "kitchin", "name": "基钦", "period": 3.5, "start": 2023, "color": "#0ea5e9", "desc": "3.5年库存周期"},
+        ]
+
+        years = list(range(start_year, end_year + 1))
+        series = []
+        composite = [0.0] * len(years)
+        for c in cycles:
+            vals = []
+            for y in years:
+                phase = 2 * math.pi * (y - c["start"]) / c["period"] - math.pi / 2
+                v = math.sin(phase)
+                vals.append(round(v, 4))
+            series.append({
+                "key": c["key"],
+                "name": c["name"],
+                "color": c["color"],
+                "desc": c["desc"],
+                "values": vals,
+            })
+            for i, v in enumerate(vals):
+                composite[i] += v
+        composite = [round(v / len(cycles), 4) for v in composite]
+
+        result = {
+            "generated_at": _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "start_year": start_year,
+            "end_year": end_year,
+            "current_year": _dt.date.today().year,
+            "years": years,
+            "series": series,
+            "composite": {
+                "name": "四周期综合景气",
+                "color": "#dc2626",
+                "values": composite,
+            },
+            "note": "各周期按理论长度以正弦波建模，0轴为景气中性线；综合景气为四周期等权平均。",
+        }
+        self.write_json(result)
+
     def handle_demographics(self, query: str = "") -> None:
         """GET /api/demographics：中国新生儿统计 + 老龄化统计。"""
         global _DEMOGRAPHICS_CACHE, _DEMOGRAPHICS_CACHE_DATE
@@ -3212,6 +3321,34 @@ class StockHandler(SimpleHTTPRequestHandler):
             result = analyze_demographics(years=years, force=force)
             _DEMOGRAPHICS_CACHE = result
             _DEMOGRAPHICS_CACHE_DATE = cache_key
+            self.write_json(result)
+        except Exception as exc:
+            traceback.print_exc()
+            self.write_json({"error": str(exc)}, status=500)
+
+    def handle_real_estate(self, query: str = "") -> None:
+        """GET /api/real-estate：NBS 月度销售数据 + 70 城二手房价格指数。"""
+        global _REAL_ESTATE_CACHE, _REAL_ESTATE_CACHE_DATE
+        import datetime as _dt
+        params = parse_qs(query)
+        force = params.get("force", ["false"])[0].lower() == "true"
+        today = _dt.date.today().isoformat()
+        if not force and _REAL_ESTATE_CACHE is not None and _REAL_ESTATE_CACHE_DATE == today:
+            self.write_json(_REAL_ESTATE_CACHE)
+            return
+        try:
+            from real_estate_analyzer import analyze_real_estate
+        except Exception as exc:
+            traceback.print_exc()
+            self.write_json(
+                {"error": f"real_estate_analyzer 模块加载失败：{exc}"},
+                status=500,
+            )
+            return
+        try:
+            result = analyze_real_estate(force=force)
+            _REAL_ESTATE_CACHE = result
+            _REAL_ESTATE_CACHE_DATE = today
             self.write_json(result)
         except Exception as exc:
             traceback.print_exc()

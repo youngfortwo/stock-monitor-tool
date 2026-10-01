@@ -1268,8 +1268,8 @@ tr.zt-expand-row > td {
     <li><a href="#kuznets"><span class="nav-icon">🏗️</span>库兹涅茨周期</a></li>
     <li><a href="#juglar"><span class="nav-icon">🏭</span>朱格拉周期</a></li>
     <li><a href="#kitchin"><span class="nav-icon">📦</span>基钦周期</a></li>
-    <li><a href="#births"><span class="nav-icon">👶</span>新生儿统计</a></li>
-    <li><a href="#aging"><span class="nav-icon">👴</span>老龄化统计</a></li>
+    <li><a href="#births"><span class="nav-icon">👶</span>人口统计</a></li>
+    <li><a href="#real-estate"><span class="nav-icon">🏠</span>房地产数据</a></li>
   </ul>
   <div class="sidebar-divider"></div>
   <div class="sidebar-section-label">板块分析</div>
@@ -1623,10 +1623,10 @@ tr.zt-expand-row > td {
 </section>
 </div><!-- /page-kitchin -->
 
-<!-- ===== 中国新生儿统计 ===== -->
+<!-- ===== 中国人口统计 ===== -->
 <div id="page-births" class="page">
 <section class="tool-panel" id="sec-births">
-  <h2>中国新生儿统计</h2>
+  <h2>中国人口统计</h2>
   <div class="muted" style="margin-bottom: 10px;">
     近 20 年出生人口、净增人口、出生率与总和生育率。出生人口以<b>国家统计局公布值</b>为主序列，
     同时给出世界银行（联合国口径）推算值作对照；净增人口由总人口前年差计算，可更新到 2025 年。
@@ -1637,12 +1637,10 @@ tr.zt-expand-row > td {
     <div class="muted" style="padding:12px;">加载中...</div>
   </div>
 </section>
-</div><!-- /page-births -->
 
-<!-- ===== 中国老龄化统计 ===== -->
-<div id="page-aging" class="page">
+<!-- ===== 中国老龄化统计（并入人口统计页） ===== -->
 <section class="tool-panel" id="sec-aging">
-  <h2>中国老龄化统计</h2>
+  <h2>老龄化统计</h2>
   <div class="muted" style="margin-bottom: 10px;">
     65 岁以上人口占比、老年抚养比与少儿占比，并按联合国通行门槛判定所处阶段
     （7% 老龄化社会、14% 深度老龄化、20% 超老龄化）。数据源为世界银行（联合国口径）。
@@ -1653,7 +1651,23 @@ tr.zt-expand-row > td {
     <div class="muted" style="padding:12px;">加载中...</div>
   </div>
 </section>
-</div><!-- /page-aging -->
+</div><!-- /page-births -->
+
+<!-- ===== 房地产数据 ===== -->
+<div id="page-real-estate" class="page">
+<section class="tool-panel" id="sec-real-estate">
+  <h2>房地产数据</h2>
+  <div class="muted" style="margin-bottom: 10px;">
+    国家统计局月度公报口径：商品房销售面积/销售额、二手房网签面积、开发投资（累计同比）；
+    城市二手房价格来自统计局 70 城价格指数（东方财富源），环比累乘为链式指数。
+    <button id="real-estate-refresh-btn" type="button" class="btn-refresh" style="margin-left:10px;">刷新</button>
+    <span id="real-estate-update-time" class="muted" style="margin-left:10px;font-size:12px;"></span>
+  </div>
+  <div id="real-estate-result">
+    <div class="muted" style="padding:12px;">加载中...</div>
+  </div>
+</section>
+</div><!-- /page-real-estate -->
 
 <!-- ===== 个股综合分析 ===== -->
 <div id="page-analysis" class="page">
@@ -1862,6 +1876,15 @@ tr.zt-expand-row > td {
   <div style="margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
      <span class="muted" style="font-size: 12px;">筛选：</span>
      <input type="text" id="filter-code-ob" placeholder="代码…" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#172033;font-size:12px;width:80px;" />
+     <select id="filter-industry-ob" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#172033;font-size:12px;max-width:160px;">
+       <option value="">行业</option>
+     </select>
+     <select id="sort-ob" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#172033;font-size:12px;">
+       <option value="score">排序：得分↓</option>
+       <option value="max_drawdown_pct">排序：回撤深↓</option>
+       <option value="rebound_from_low_pct">排序：反弹幅度↓</option>
+       <option value="pct_chg">排序：当日涨幅↓</option>
+     </select>
      <div class="ms-dropdown" id="filter-board-ob" data-label="市场">
        <div class="ms-dropdown-btn" tabindex="0">市场</div>
        <div class="ms-dropdown-panel">
@@ -2934,11 +2957,13 @@ function renderObRows() {
   const tbody = document.getElementById("ob-body");
   const { rows, page } = tableState.ob;
   const codeFilter = document.getElementById("filter-code-ob").value.trim();
+  const industryFilter = document.getElementById("filter-industry-ob").value;
   const boardFilter = getMultiSelect("filter-board-ob");
   const signalFilter = getMultiSelect("filter-signal-ob");
 
   let filtered = rows;
   if (codeFilter) filtered = filtered.filter(r => (r.code || "").includes(codeFilter));
+  if (industryFilter) filtered = filtered.filter(r => (r.display_industry || r.industry || "") === industryFilter);
   if (boardFilter.length) {
     filtered = filtered.filter(r => {
       const b = r.board || "";
@@ -2953,7 +2978,10 @@ function renderObRows() {
     filtered = filtered.filter(r => signalFilter.includes(r.signal_type || "左侧埋伏"));
   }
 
-  const active = !!(codeFilter || boardFilter.length || signalFilter.length);
+  const sortKey = document.getElementById("sort-ob").value || "score";
+  filtered = filtered.slice().sort((a, b) => (Number(b[sortKey]) || 0) - (Number(a[sortKey]) || 0));
+
+  const active = !!(codeFilter || industryFilter || boardFilter.length || signalFilter.length);
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE) || 1;
   const safePage = Math.min(page, totalPages);
   if (page !== safePage) tableState.ob.page = safePage;
@@ -3004,6 +3032,20 @@ function renderObRows() {
   document.getElementById("ob-page-info").textContent = `第 ${safePage}/${totalPages} 页${active ? ` (筛选后 ${filtered.length}/${rows.length} 条)` : ` (${rows.length} 条)`}`;
 }
 
+// 填充超跌反弹选股行业筛选下拉框（带入选数量，按数量降序，与 SEPA 二阶段一致）
+function _fillObIndustrySelect(rows) {
+  const indCount = {};
+  rows.forEach(r => {
+    const ind = r.display_industry || r.industry;
+    if (ind) indCount[ind] = (indCount[ind] || 0) + 1;
+  });
+  const entries = Object.entries(indCount).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const sel = document.getElementById("filter-industry-ob");
+  const prevVal = sel ? sel.value : "";
+  sel.innerHTML = '<option value="">行业</option>' + entries.map(([v, n]) => `<option value="${v}">${v} (${n})</option>`).join("");
+  if (prevVal) sel.value = prevVal;
+}
+
 async function loadObCandidates(keepPage = false) {
   const response = await fetch("oversold_rebound_candidates_test.csv", { cache: "no-store" }).catch(() => null);
   if (!response || !response.ok) {
@@ -3021,6 +3063,7 @@ async function loadObCandidates(keepPage = false) {
   }
   const rows = parseCsv(text);
   tableState.ob.rows = rows;
+  _fillObIndustrySelect(rows);
   if (!keepPage) tableState.ob.page = 1;
   renderObRows();
 }
@@ -3058,6 +3101,7 @@ async function loadObFromScanner() {
       }
     });
     tableState.ob.rows = rows;
+    _fillObIndustrySelect(rows);
     tableState.ob.page = 1;
     renderObRows();
     msg.textContent = `已加载扫描机 ${payload.scan_date} 数据（${rows.length} 条）`;
@@ -4685,7 +4729,7 @@ function renderBirths(data) {
   h += `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">`;
   h += `<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">出生人口与净增人口走势</div>`;
   h += `<div id="birthschart"></div>`;
-  h += `<div class="muted" style="font-size:11px;margin-top:4px;">蓝线为统计局出生人口，灰虚线为世界银行出生人口推算值，红/绿线为净增人口（总人口前年差）。</div>`;
+  h += `<div class="muted" style="font-size:11px;margin-top:4px;">蓝线为统计局出生人口，灰虚线为世界银行出生人口推算值，红/绿线为净增人口（总人口前年差）；灰色虚线为净增人口 0 水平线，跌破即人口开始自然减少。</div>`;
   if (b.births_missing_note) {
     h += `<div style="background:#fef3c7;border:1px solid #fde68a;color:#92400e;border-radius:6px;padding:8px 10px;font-size:12px;margin-top:8px;">${b.births_missing_note}</div>`;
   }
@@ -4714,7 +4758,7 @@ function renderBirths(data) {
     { name: "出生人口(统计局)", values: b.history.births_wan, color: col, width: 2 },
     { name: "出生人口(世界银行)", values: b.history.births_wan_wb, color: "#94a3b8", width: 1.5, dash: "4,3" },
     { name: "净增人口", values: b.history.net_population_wan, color: "#ef4444", width: 1.8 },
-  ], { valueSuffix: " 万" });
+  ], { valueSuffix: " 万", refLines: [0] });
 }
 
 function renderAging(data) {
@@ -4800,13 +4844,13 @@ function _drawDemoChart(containerId, years, seriesList, opts = {}) {
   const n = (years || []).length;
   const all = [];
   seriesList.forEach(s => (s.values || []).forEach(v => { if (v != null) all.push(v); }));
-  (opts.refLines || []).forEach(v => all.push(v));
+  (opts.refLines || []).forEach(v => all.push(typeof v === "object" ? v.value : v));
   if (!n || !all.length) {
     el.innerHTML = '<div class="muted" style="padding:12px;">暂无数据</div>';
     return;
   }
 
-  const W = 860, H = 240, padL = 50, padR = 14, padT = 30, padB = 30;
+  const W = 860, H = 240, padL = 50, padR = 30, padT = 30, padB = 30;
   const plotW = W - padL - padR, plotH = H - padT - padB;
   let minV = Math.min(...all), maxV = Math.max(...all);
   let span = (maxV - minV) || 1;
@@ -4823,11 +4867,14 @@ function _drawDemoChart(containerId, years, seriesList, opts = {}) {
     svg += `<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W - padR}" y2="${yy.toFixed(1)}" stroke="#eef2f7" stroke-width="1"/>`;
     svg += `<text x="${padL - 5}" y="${(yy + 4).toFixed(1)}" text-anchor="end" font-size="10" fill="#657188">${val.toFixed(1)}</text>`;
   }
-  // 水平参考线（老龄化门槛）
-  (opts.refLines || []).forEach(v => {
+  // 水平参考线（支持数值或 {value, color, label}）
+  (opts.refLines || []).forEach(r => {
+    const v = typeof r === "object" ? r.value : r;
+    const col = (r && r.color) || "#cbd5e1";
+    const lab = (r && r.label != null) ? r.label : `${v}${sfx}`;
     if (v <= minV || v >= maxV) return;
-    svg += `<line x1="${padL}" y1="${y(v).toFixed(1)}" x2="${W - padR}" y2="${y(v).toFixed(1)}" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="5,4"/>`;
-    svg += `<text x="${W - padR - 2}" y="${(y(v) - 3).toFixed(1)}" text-anchor="end" font-size="9" fill="#94a3b8">${v}${sfx}</text>`;
+    svg += `<line x1="${padL}" y1="${y(v).toFixed(1)}" x2="${W - padR}" y2="${y(v).toFixed(1)}" stroke="${col}" stroke-width="1.2" stroke-dasharray="5,4"/>`;
+    svg += `<text x="${W - padR - 2}" y="${(y(v) - 3).toFixed(1)}" text-anchor="end" font-size="9" fill="${col}">${lab}</text>`;
   });
   // 折线
   seriesList.forEach(s => {
@@ -4851,6 +4898,7 @@ function _drawDemoChart(containerId, years, seriesList, opts = {}) {
   // 图例
   let lx = padL;
   seriesList.forEach(s => {
+    if (!s.name) return;  // 同名阶段只标一次图例，重复段留空跳过
     if (!(s.values || []).some(v => v != null)) return;
     svg += `<line x1="${lx}" y1="${padT - 13}" x2="${lx + 16}" y2="${padT - 13}" stroke="${s.color}" stroke-width="${s.width || 2}"`;
     if (s.dash) svg += ` stroke-dasharray="${s.dash}"`;
@@ -4861,6 +4909,686 @@ function _drawDemoChart(containerId, years, seriesList, opts = {}) {
   svg += `</svg>`;
   el.innerHTML = svg;
 }
+
+// ─── 房地产数据（NBS 月度销售 + 70 城二手房价格）──────────────────
+async function loadRealEstate(force = false) {
+  const box = document.getElementById("real-estate-result");
+  if (!box) return;
+  if (force) box.innerHTML = '<div class="muted" style="padding:12px;">正在更新，首次抓取约需 1 分钟...</div>';
+  try {
+    const resp = await fetch("/api/real-estate" + (force ? "?force=true" : ""), { cache: "no-store" });
+    const data = await resp.json();
+    renderRealEstate(data);
+  } catch (e) {
+    box.innerHTML = `<div class="muted" style="padding:12px;color:#c2410c;">加载失败：${e}</div>`;
+  }
+}
+
+function renderRealEstate(data) {
+  const box = document.getElementById("real-estate-result");
+  if (!box) return;
+  if (data.error) {
+    box.innerHTML = `<div class="muted" style="padding:12px;color:#c2410c;">${data.error}</div>`;
+    return;
+  }
+  const ut = document.getElementById("real-estate-update-time");
+  if (ut) ut.textContent = data.generated_at ? `更新时间: ${data.generated_at}` : "";
+  const n = data.nbs || {};
+  const c = data.cities || {};
+  let h = "";
+
+  const pct = v => v == null ? "—" : (v > 0 ? "+" : "") + v.toFixed(1) + "%";
+  const pctColor = v => v == null ? "#657188" : (v >= 0 ? "#16a34a" : "#dc2626");
+
+  // KPI 卡片（最新公报月）
+  const latest = n.latest;
+  if (latest) {
+    const [ly, lm] = String(latest.period || "").split("-");
+    h += `<div style="font-size:12px;color:#657188;margin-bottom:6px;">统计局公报：${ly} 年 1—${Number(lm)} 月份（累计同比）</div>`;
+    h += `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px;">`;
+    const cards = [
+      ["商品房销售面积", latest.sales_area_wan != null ? latest.sales_area_wan.toLocaleString() + " 万㎡" : "—", latest.sales_area_yoy],
+      ["商品房销售额", latest.sales_value_yi != null ? latest.sales_value_yi.toLocaleString() + " 亿元" : "—", latest.sales_value_yoy],
+      ["二手房网签面积", latest.secondhand_area_wan != null ? latest.secondhand_area_wan.toLocaleString() + " 万㎡" : "—", latest.secondhand_area_yoy],
+      ["房地产开发投资", null, latest.invest_yoy],
+    ];
+    cards.forEach(([label, val, yoy]) => {
+      h += `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;">`;
+      h += `<div style="font-size:12px;color:#657188;margin-bottom:4px;">${label}</div>`;
+      if (val) h += `<div style="font-size:20px;font-weight:700;color:#1f2937;">${val}</div>`;
+      h += `<div style="font-size:13px;font-weight:600;color:${pctColor(yoy)};${val ? "" : "font-size:20px;"}">同比 ${pct(yoy)}</div>`;
+      h += `</div>`;
+    });
+    h += `</div>`;
+  }
+  if (n.error) h += `<div style="color:#c2410c;font-size:12px;margin-bottom:10px;">${n.error}</div>`;
+
+  // 上海每日网签
+  const sh = data.shanghai || {};
+  if (sh.latest && (sh.dates || []).length) {
+    const mLatest = (sh.monthly || [])[sh.monthly.length - 1];
+    h += `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:14px;">`;
+    h += `<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">上海每日网签套数（最新 ${sh.latest.date}：二手 ${sh.latest.second} 套${sh.latest.new != null ? " / 新房 " + sh.latest.new + " 套" : ""}）</div>`;
+    h += `<div id="re-sh-chart"></div>`;
+    h += `<div class="muted" style="font-size:11px;margin-top:4px;">网签数为“网上房地产”口径（媒体账号日更转载），二手房含住宅、商办及车位。`;
+    if (mLatest) h += `${mLatest.month} 月截止 ${mLatest.days} 日：二手累计 <strong>${mLatest.second.toLocaleString()}</strong> 套，新房累计 <strong>${mLatest.new.toLocaleString()}</strong> 套。`;
+    h += `</div>`;
+    const rows = (sh.monthly || []).slice(-13);
+    if (rows.length > 1) {
+      h += `<div style="font-size:13px;font-weight:600;color:#374151;margin:12px 0 6px;">月度累计成交（套）</div>`;
+      h += `<table style="width:100%;font-size:12px;"><thead><tr><th>月份</th><th>新房</th><th>二手房</th></tr></thead><tbody>`;
+      rows.forEach(r => {
+        h += `<tr><td>${r.month}</td><td>${r.new.toLocaleString()}</td><td><strong>${r.second.toLocaleString()}</strong></td></tr>`;
+      });
+      h += `</tbody></table>`;
+      h += `<div class="muted" style="font-size:11px;margin-top:4px;">当月为截至最新数据日的累计值。</div>`;
+    }
+    h += `</div>`;
+  }
+  if (sh.error) h += `<div style="color:#c2410c;font-size:12px;margin-bottom:10px;">${sh.error}</div>`;
+
+  // 图 1：累计同比走势
+  if ((n.months || []).length) {
+    h += `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:14px;">`;
+    h += `<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">全国房地产累计同比走势（近 ${n.months.length} 个月）</div>`;
+    h += `<div id="re-nbs-chart"></div>`;
+    h += `<div class="muted" style="font-size:11px;margin-top:4px;">均为累计同比增速；二手房网签面积自 2026 年起才在公报中披露。</div>`;
+    h += `</div>`;
+  }
+
+  // 图 2：城市链式指数 + 城市表
+  if ((c.months || []).length) {
+    h += `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">`;
+    h += `<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">代表城市二手住宅价格链式指数（近 ${(c.months.length / 12).toFixed(1)} 年 / ${c.months.length} 个月，起点=100）</div>`;
+    h += `<div id="re-chain-chart"></div>`;
+    h += `<div class="muted" style="font-size:11px;margin-top:4px;">统计局 70 城价格指数中的二手住宅环比累乘所得，仅观察趋势。</div>`;
+
+    const rows = c.latest || [];
+    if (rows.length) {
+      h += `<div style="font-size:13px;font-weight:600;color:#374151;margin:14px 0 6px;">${rows[0].month} 各城市二手房价格指数</div>`;
+      h += `<table style="width:100%;font-size:12px;"><thead><tr>`;
+      h += `<th>城市</th><th>环比</th><th>同比</th><th>链式点位</th><th>较窗口高点回撤</th></tr></thead><tbody>`;
+      const idxFmt = v => v == null ? "—" : v.toFixed(1);
+      rows.forEach(r => {
+        const tone = v => v == null ? "#657188" : (v >= 100 ? "#16a34a" : "#dc2626");
+        h += `<tr><td><strong>${r.city}</strong></td>`;
+        h += `<td style="color:${tone(r.mom)};font-weight:600;">${idxFmt(r.mom)}</td>`;
+        h += `<td style="color:${tone(r.yoy)};font-weight:600;">${idxFmt(r.yoy)}</td>`;
+        h += `<td>${idxFmt(r.chain_latest)}</td>`;
+        h += `<td style="color:#c2410c;">${r.chain_peak_drawdown == null ? "—" : r.chain_peak_drawdown.toFixed(1) + "%"}</td></tr>`;
+      });
+      h += `</tbody></table>`;
+    }
+    h += `</div>`;
+  }
+  if (c.error) h += `<div style="color:#c2410c;font-size:12px;margin-top:10px;">${c.error}</div>`;
+
+  // 图 3：城镇化率（长期需求视角）
+  const u = data.urbanization || {};
+  if ((u.years || []).length) {
+    h += `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-top:14px;">`;
+    h += `<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">中国城镇化率（${u.years[0]} ~ ${u.years[u.years.length - 1]}，最新 ${u.latest}%）</div>`;
+    h += `<div id="re-urb-chart"></div>`;
+    h += `<div class="muted" style="font-size:11px;margin-top:4px;">${u.note || ""}</div>`;
+    const rc = u.recent || [];
+    if (rc.length) {
+      h += `<div style="font-size:12px;color:#374151;margin-top:8px;">近 10 年逐年：`;
+      h += rc.map(r => `${r.year} ${r.rate.toFixed(1)}%${r.delta == null ? "" : `（+${r.delta.toFixed(2)}）`}`).join("　");
+      h += `</div>`;
+    }
+    h += `</div>`;
+  }
+  if (u.error) h += `<div style="color:#c2410c;font-size:12px;margin-top:10px;">${u.error}</div>`;
+
+  // 图 4：四周期走势总览（康波 / 库兹涅茨 / 朱格拉 / 基钦）
+  h += `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-top:14px;">`;
+  h += `<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">四周期走势总览</div>`;
+  h += `<div id="re-cycles-overview" class="muted" style="font-size:12px;">正在加载周期数据…</div>`;
+  h += `</div>`;
+
+  box.innerHTML = h;
+
+  if (sh.latest && (sh.dates || []).length) {
+    _drawDemoChart("re-sh-chart", sh.dates.map(d => d.slice(5)), [
+      { name: "二手房", values: sh.second_daily, color: "#ef4444", width: 2 },
+      { name: "新房", values: sh.new_daily, color: "#3b82f6", width: 1.6 },
+    ], { valueSuffix: " 套" });
+  }
+
+  if ((n.months || []).length) {
+    _drawDemoChart("re-nbs-chart", n.months, [
+      { name: "销售面积", values: n.sales_area_yoy, color: "#3b82f6", width: 2 },
+      { name: "销售额", values: n.sales_value_yoy, color: "#f59e0b", width: 2 },
+      { name: "开发投资", values: n.invest_yoy, color: "#8b5cf6", width: 1.6 },
+      { name: "二手房网签面积", values: n.secondhand_area_yoy, color: "#10b981", width: 1.8 },
+    ], { valueSuffix: "%", refLines: [0] });
+  }
+  if ((c.months || []).length) {
+    const palette = { 北京: "#3b82f6", 上海: "#ef4444", 深圳: "#10b981", 广州: "#f59e0b", 杭州: "#8b5cf6", 武汉: "#0ea5e9" };
+    const show = ["北京", "上海", "深圳", "广州", "杭州", "武汉"].filter(k => (c.chains || {})[k]);
+    _drawDemoChart("re-chain-chart", c.months,
+      show.map(k => ({ name: k, values: c.chains[k], color: palette[k], width: 1.8 })),
+      { valueSuffix: "", refLines: [100] });
+  }
+  if ((u.years || []).length) {
+    _drawDemoChart("re-urb-chart", u.years, [
+      { name: "城镇化率（%）", values: u.rates, color: "#f97316", width: 2 },
+    ], { valueSuffix: "%", refLines: [30, 50, 70] });
+  }
+  renderReCyclesOverview();
+}
+
+// 四周期走势总览：各序列归一化到 0~100 后合并为一张四线折线图，支持图例勾选显隐
+const CYCLE_VIS_KEY = "reCyclesOverviewVisible";
+const CYCLE_VIS_DEFAULT = { kuznets: true, juglar: true, kitchin: true, kondratievi: true };
+let cycleVisible = { ...CYCLE_VIS_DEFAULT };
+let cycleOverviewState = null;  // 保存最近一次归一化结果，供切换显隐时复用
+
+function loadCycleVisible() {
+  const raw = localStorage.getItem(CYCLE_VIS_KEY);
+  if (!raw) { cycleVisible = { ...CYCLE_VIS_DEFAULT }; return; }
+  try {
+    const parsed = JSON.parse(raw);
+    cycleVisible = { ...CYCLE_VIS_DEFAULT, ...(parsed || {}) };
+  } catch (e) {
+    cycleVisible = { ...CYCLE_VIS_DEFAULT };
+  }
+}
+
+function saveCycleVisible() {
+  try { localStorage.setItem(CYCLE_VIS_KEY, JSON.stringify(cycleVisible)); } catch (e) {}
+}
+
+function _drawCyclesOverviewChart() {
+  if (!cycleOverviewState) return;
+  const { months, series, zeroRefs } = cycleOverviewState;
+  const visibleSeries = series.filter(s => cycleVisible[s._key]);
+  const visibleZeroRefs = zeroRefs.filter((_, i) => {
+    // zeroRefs 顺序与 kuznets/juglar/kitchin 在 series 中的顺序一致
+    const orderKeys = ["kuznets", "juglar", "kitchin"];
+    const k = orderKeys[i];
+    return cycleVisible[k];
+  });
+  _drawDemoChart("re-cy-unified", months, visibleSeries, {
+    valueSuffix: "",
+    refLines: visibleSeries.length ? [50, ...visibleZeroRefs] : [],
+  });
+}
+
+/**
+ * 绘制周金涛风格的康波周期正弦波：
+ * - 一个完整的 ~54 年正弦波，四阶段分别填色
+ * - 当前年份位置用黄点标注
+ * - 谷（回升期结束）、顶（繁荣期结束）用三角标注
+ */
+function _drawKondratievWave(containerId, position, timeline) {
+  const el = document.getElementById(containerId);
+  if (!el || !position || !timeline) return;
+
+  const currentCycle = timeline.find(c => c.is_current);
+  if (!currentCycle) return;
+
+  const cycleStart = currentCycle.start;
+  const cycleEnd = currentCycle.end;
+  const period = cycleEnd - cycleStart;
+  const currentYear = new Date().getFullYear();
+
+  const W = 860, H = 260, padL = 56, padR = 30, padT = 32, padB = 38;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const xOfYear = y => padL + ((y - cycleStart) / period) * plotW;
+  const yOfSin = v => padT + plotH * (1 - (v + 1) / 2); // v ∈ [-1,1] → [H,0]
+
+  const phaseColor = {
+    spring: "#22c55e", // 回升（春）→ 绿色，波谷上行
+    summer: "#eab308", // 繁荣（夏）→ 黄色，波峰
+    autumn: "#ef4444", // 滞胀（秋）→ 红色，波峰下行
+    winter: "#6366f1", // 萧条（冬）→ 蓝紫，波谷
+  };
+  const phaseName = { spring: "回升", summer: "繁荣", autumn: "滞胀", winter: "萧条" };
+
+  // 按季度采样正弦波，便于平滑曲线和分段填色
+  const samples = [];
+  const quarters = period * 4;
+  for (let i = 0; i <= quarters; i++) {
+    const t = i / quarters; // 0~1
+    const year = cycleStart + t * period;
+    const phase = Math.sin(t * 2 * Math.PI - Math.PI / 2); // 起点 -1，先上行
+    samples.push({ year, phase });
+  }
+
+  // 每个采样点所属阶段
+  const phaseAt = y => {
+    const ph = currentCycle.phases.find(p => p.start <= y && y < p.end);
+    return ph ? ph.key : null;
+  };
+
+  // 阶段分段：把连续同阶段的采样点合并为 path
+  const segments = [];
+  let current = null;
+  samples.forEach((pt, idx) => {
+    const key = phaseAt(pt.year);
+    if (!key) return;
+    if (key !== current) {
+      current = key;
+      segments.push({ key, pts: [] });
+    }
+    segments[segments.length - 1].pts.push(pt);
+  });
+
+  // 曲线 stroke path
+  let d = "";
+  let started = false;
+  samples.forEach(pt => {
+    const xx = xOfYear(pt.year);
+    const yy = yOfSin(pt.phase);
+    d += (started ? " L" : " M") + `${xx.toFixed(1)} ${yy.toFixed(1)}`;
+    started = true;
+  });
+
+  // 底部中轴线（y=0）
+  const yZero = yOfSin(0);
+  // 填充区域：从曲线到中轴线，按阶段着色
+  let fills = "";
+  segments.forEach(seg => {
+    if (!seg.pts.length) return;
+    let pd = `M ${xOfYear(seg.pts[0].year).toFixed(1)} ${yOfSin(seg.pts[0].phase).toFixed(1)}`;
+    for (let i = 1; i < seg.pts.length; i++) {
+      pd += ` L ${xOfYear(seg.pts[i].year).toFixed(1)} ${yOfSin(seg.pts[i].phase).toFixed(1)}`;
+    }
+    // 闭合到中轴线
+    const last = seg.pts[seg.pts.length - 1];
+    const first = seg.pts[0];
+    pd += ` L ${xOfYear(last.year).toFixed(1)} ${yZero.toFixed(1)}`;
+    pd += ` L ${xOfYear(first.year).toFixed(1)} ${yZero.toFixed(1)} Z`;
+    fills += `<path d="${pd}" fill="${phaseColor[seg.key]}" fill-opacity="0.18" stroke="none"/>`;
+  });
+
+  // 当前位置点
+  const curX = xOfYear(currentYear);
+  const curPhase = Math.sin(((currentYear - cycleStart) / period) * 2 * Math.PI - Math.PI / 2);
+  const curY = yOfSin(curPhase);
+
+  // 关键点：谷（回升期结束=繁荣起点）和顶（繁荣期结束=滞胀起点）
+  let markers = "";
+  currentCycle.phases.forEach(p => {
+    if (p.key === "spring") {
+      // 谷：回升期结束点 = spring.end
+      const mx = xOfYear(p.end);
+      const my = yOfSin(-1);
+      markers += `<polygon points="${mx},${my + 8} ${mx - 6},${my - 2} ${mx + 6},${my - 2}" fill="#3b82f6"/>`;
+      markers += `<text x="${mx}" y="${my + 20}" text-anchor="middle" font-size="10" fill="#3b82f6">谷（回升结束）</text>`;
+    }
+    if (p.key === "summer") {
+      // 顶：繁荣期结束点 = summer.end
+      const mx = xOfYear(p.end);
+      const my = yOfSin(1);
+      markers += `<polygon points="${mx},${my - 8} ${mx - 6},${my + 2} ${mx + 6},${my + 2}" fill="#eab308"/>`;
+      markers += `<text x="${mx}" y="${my - 12}" text-anchor="middle" font-size="10" fill="#eab308">顶（繁荣结束）</text>`;
+    }
+  });
+
+  // 图例：四阶段
+  const legendItems = [
+    { key: "summer", label: "繁荣" },
+    { key: "autumn", label: "滞胀" },
+    { key: "winter", label: "萧条" },
+    { key: "spring", label: "回升" },
+  ];
+  let legendX = padL;
+  let legendSvg = "";
+  legendItems.forEach(item => {
+    legendSvg += `<rect x="${legendX}" y="${padT - 20}" width="10" height="10" rx="2" fill="${phaseColor[item.key]}" fill-opacity="0.7"/>`;
+    legendSvg += `<text x="${legendX + 14}" y="${padT - 11}" font-size="11" fill="#374151">${item.label}</text>`;
+    legendX += 14 + item.label.length * 11 + 22;
+  });
+
+  // 坐标轴、网格
+  let grid = "";
+  for (let t = 0; t <= 4; t++) {
+    const val = -1 + 2 * t / 4;
+    const yy = yOfSin(val);
+    grid += `<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W - padR}" y2="${yy.toFixed(1)}" stroke="#eef2f7" stroke-width="1"/>`;
+    let label = val.toFixed(1);
+    if (Math.abs(val - 1) < 0.01) label = "顶";
+    if (Math.abs(val + 1) < 0.01) label = "谷";
+    grid += `<text x="${padL - 6}" y="${(yy + 4).toFixed(1)}" text-anchor="end" font-size="10" fill="#657188">${label}</text>`;
+  }
+
+  // X 轴年份（每隔几年标一个）
+  const xStep = Math.max(5, Math.round(period / 12));
+  let xLabels = "";
+  for (let y = cycleStart; y <= cycleEnd; y += xStep) {
+    const xx = xOfYear(y);
+    xLabels += `<line x1="${xx.toFixed(1)}" y1="${padT}" x2="${xx.toFixed(1)}" y2="${H - padB}" stroke="#eef2f7" stroke-width="1"/>`;
+    xLabels += `<text x="${xx.toFixed(1)}" y="${H - 16}" text-anchor="middle" font-size="9" fill="#657188">${y}</text>`;
+  }
+
+  const html = `
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto;background:#fff;border:1px solid #e8edf4;border-radius:8px;">
+      ${grid}
+      ${xLabels}
+      ${fills}
+      <path d="${d}" fill="none" stroke="#6366f1" stroke-width="2.2"/>
+      <line x1="${padL}" y1="${yZero.toFixed(1)}" x2="${W - padR}" y2="${yZero.toFixed(1)}" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="4,3"/>
+      ${markers}
+      <circle cx="${curX.toFixed(1)}" cy="${curY.toFixed(1)}" r="5" fill="#f59e0b" stroke="#fff" stroke-width="2"/>
+      <text x="${(curX + 10).toFixed(1)}" y="${(curY - 10).toFixed(1)}" font-size="11" fill="#f59e0b" font-weight="600">当前 ${currentYear} · ${phaseName[position.phase_key] || position.phase_name}</text>
+      ${legendSvg}
+    </svg>
+  `;
+  el.innerHTML = html;
+}
+
+// 四周期理论模型图：康波/库兹涅茨/朱格拉/基钦 正弦叠加 + 综合景气
+const CYCLE_MODEL_VIS_KEY = "cycleModelVisible";
+const CYCLE_MODEL_VIS_DEFAULT = {
+  kondratievi: true,
+  kuznets: true,
+  juglar: true,
+  kitchin: true,
+  composite: true,
+};
+let cycleModelVisible = { ...CYCLE_MODEL_VIS_DEFAULT };
+let cycleModelState = null;
+
+function loadCycleModelVisible() {
+  const raw = localStorage.getItem(CYCLE_MODEL_VIS_KEY);
+  if (!raw) { cycleModelVisible = { ...CYCLE_MODEL_VIS_DEFAULT }; return; }
+  try {
+    cycleModelVisible = { ...CYCLE_MODEL_VIS_DEFAULT, ...(JSON.parse(raw) || {}) };
+  } catch (e) {
+    cycleModelVisible = { ...CYCLE_MODEL_VIS_DEFAULT };
+  }
+}
+function saveCycleModelVisible() {
+  try { localStorage.setItem(CYCLE_MODEL_VIS_KEY, JSON.stringify(cycleModelVisible)); } catch (e) {}
+}
+
+function _drawCycleModelChart() {
+  if (!cycleModelState) return;
+  const { years, series, composite, currentYear } = cycleModelState;
+  const el = document.getElementById("re-cycle-model-chart");
+  if (!el) return;
+
+  const visibleSeries = series.filter(s => cycleModelVisible[s.key]).map(s => ({
+    name: s.name,
+    values: s.values,
+    color: s.color,
+    width: 1.8,
+  }));
+  if (cycleModelVisible.composite) {
+    visibleSeries.push({
+      name: composite.name,
+      values: composite.values,
+      color: composite.color,
+      width: 2,
+      dash: "6,4",
+    });
+  }
+
+  const W = 860, H = 280, padL = 52, padR = 30, padT = 34, padB = 38;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const n = years.length;
+  const x = i => padL + (n === 1 ? plotW / 2 : plotW * i / (n - 1));
+  const y = v => padT + plotH * (1 - (v + 1) / 2);
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto;background:#fff;border:1px solid #e8edf4;border-radius:8px;">`;
+
+  // 网格与 Y 轴标签
+  for (let t = 0; t <= 4; t++) {
+    const val = -1 + 2 * t / 4;
+    const yy = y(val);
+    svg += `<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W - padR}" y2="${yy.toFixed(1)}" stroke="#eef2f7" stroke-width="1"/>`;
+    let label = val.toFixed(1);
+    if (Math.abs(val - 1) < 0.01) label = "上行";
+    if (Math.abs(val + 1) < 0.01) label = "下行";
+    if (Math.abs(val) < 0.01) label = "0";
+    svg += `<text x="${padL - 6}" y="${(yy + 4).toFixed(1)}" text-anchor="end" font-size="10" fill="#657188">${label}</text>`;
+  }
+
+  // X 轴年份
+  const xStep = Math.max(5, Math.round(n / 12));
+  for (let i = 0; i < n; i += xStep) {
+    const xx = x(i);
+    svg += `<line x1="${xx.toFixed(1)}" y1="${padT}" x2="${xx.toFixed(1)}" y2="${H - padB}" stroke="#eef2f7" stroke-width="1"/>`;
+    svg += `<text x="${xx.toFixed(1)}" y="${H - 14}" text-anchor="middle" font-size="9" fill="#657188">${years[i]}</text>`;
+  }
+
+  // 0 轴
+  svg += `<line x1="${padL}" y1="${y(0).toFixed(1)}" x2="${W - padR}" y2="${y(0).toFixed(1)}" stroke="#334155" stroke-width="1.2"/>`;
+
+  // 当前年份垂直虚线
+  if (currentYear != null) {
+    const curIdx = years.indexOf(currentYear);
+    if (curIdx >= 0) {
+      const cx = x(curIdx);
+      svg += `<line x1="${cx.toFixed(1)}" y1="${padT}" x2="${cx.toFixed(1)}" y2="${H - padB}" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="5,4"/>`;
+      svg += `<text x="${cx.toFixed(1)}" y="${padT + 12}" text-anchor="middle" font-size="11" fill="#64748b">${currentYear}</text>`;
+    }
+  }
+
+  // 折线
+  visibleSeries.forEach(s => {
+    let d = "", started = false;
+    for (let i = 0; i < n; i++) {
+      const v = (s.values || [])[i];
+      if (v == null) { started = false; continue; }
+      d += (started ? " L" : " M") + `${x(i).toFixed(1)} ${y(v).toFixed(1)}`;
+      started = true;
+    }
+    if (!d) return;
+    svg += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${s.width || 2}"`;
+    if (s.dash) svg += ` stroke-dasharray="${s.dash}"`;
+    svg += `/>`;
+  });
+
+  // 图例
+  const legendSources = [
+    ...series.map(s => ({ key: s.key, name: s.name, color: s.color })),
+    { key: "composite", name: composite.name, color: composite.color, dash: true },
+  ];
+  let lx = padL;
+  legendSources.forEach(item => {
+    if (!cycleModelVisible[item.key]) return;
+    const yl = padT - 12;
+    svg += `<line x1="${lx}" y1="${yl}" x2="${lx + 16}" y2="${yl}" stroke="${item.color}" stroke-width="2"`;
+    if (item.dash) svg += ` stroke-dasharray="4,3"`;
+    svg += `/>`;
+    svg += `<text x="${lx + 21}" y="${yl + 4}" font-size="11" fill="#36445c">${item.name}</text>`;
+    lx += 21 + item.name.length * 11 + 20;
+  });
+
+  svg += `</svg>`;
+  el.innerHTML = svg;
+}
+
+async function loadCycleModel(force = false) {
+  loadCycleModelVisible();
+  const box = document.getElementById("re-cycle-model");
+  if (!box) return;
+  try {
+    const resp = await fetch("/api/cycle_model" + (force ? "?force=true" : ""), { cache: "no-store" });
+    const data = await resp.json();
+    if (data.error) { box.innerHTML = `<div style="color:#c2410c;font-size:12px;">${data.error}</div>`; return; }
+    cycleModelState = data;
+
+    const allKeys = ["kondratievi", "kuznets", "juglar", "kitchin", "composite"];
+    const legendItems = [
+      { key: "kondratievi", label: "康波(55年)", color: "#6366f1" },
+      { key: "kuznets", label: "库兹涅茨(20年)", color: "#f59e0b" },
+      { key: "juglar", label: "朱格拉(9年)", color: "#10b981" },
+      { key: "kitchin", label: "基钦(3.5年)", color: "#0ea5e9" },
+      { key: "composite", label: "四周期综合景气", color: "#dc2626" },
+    ];
+    const legendHtml = legendItems.map(item => `
+      <label style="display:inline-flex;align-items:center;gap:6px;margin-right:14px;cursor:pointer;font-size:12px;color:#374151;user-select:none;">
+        <input type="checkbox" data-cm-key="${item.key}" ${cycleModelVisible[item.key] ? "checked" : ""}
+          style="accent-color:${item.color};cursor:pointer;">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${item.color};"></span>
+        <span>${item.label}</span>
+      </label>
+    `).join("");
+
+    let h = `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px 0;margin-bottom:6px;">${legendHtml}</div>`;
+    h += `<div id="re-cycle-model-chart"></div>`;
+    h += `<div class="muted" style="font-size:11px;margin-top:6px;">${data.note || ""} 当前虚线标注为 ${data.current_year} 年。纵轴以 0 为景气中性线，+1 为理论上行极值，-1 为理论下行极值。</div>`;
+    box.innerHTML = h;
+
+    box.querySelectorAll("input[data-cm-key]").forEach(box => {
+      box.addEventListener("change", () => {
+        const k = box.getAttribute("data-cm-key");
+        cycleModelVisible[k] = box.checked;
+        saveCycleModelVisible();
+        _drawCycleModelChart();
+      });
+    });
+
+    _drawCycleModelChart();
+  } catch (e) {
+    box.innerHTML = `<div style="color:#c2410c;font-size:12px;">模型加载失败：${e.message}</div>`;
+  }
+}
+
+async function renderReCyclesOverview() {
+  loadCycleVisible();
+  const el = document.getElementById("re-cycles-overview");
+  if (!el) return;
+  let bc = null, kd = null;
+  try {
+    [bc, kd] = await Promise.all([
+      fetch("/api/business_cycles", { cache: "no-store" }).then(r => r.json()),
+      fetch("/api/kondratiev", { cache: "no-store" }).then(r => r.json()),
+    ]);
+  } catch (e) {
+    el.innerHTML = `周期数据加载失败：${e.message}`;
+    return;
+  }
+  if (!bc || !bc.cycles) { el.innerHTML = "周期数据暂不可用。"; return; }
+
+  const cyc = {};
+  ["kuznets", "juglar", "kitchin"].forEach(k => {
+    const c = (bc.cycles || []).find(x => x.key === k);
+    if (c && c.history && (c.history.months || []).length) cyc[k] = c;
+  });
+  let lo = null, hi = null;
+  Object.values(cyc).forEach(c => {
+    const ms = c.history.months;
+    if (!lo || ms[0] < lo) lo = ms[0];
+    if (!hi || ms[ms.length - 1] > hi) hi = ms[ms.length - 1];
+  });
+  if (!lo) { el.innerHTML = "周期数据暂不可用。"; return; }
+  const months = [];
+  {
+    let [y, m] = lo.split("-").map(Number);
+    const [ey, em] = hi.split("-").map(Number);
+    while (y < ey || (y === ey && m <= em)) {
+      months.push(`${y}-${String(m).padStart(2, "0")}`);
+      m++; if (m > 12) { m = 1; y++; }
+    }
+  }
+  const pos = {};
+  months.forEach((k, i) => { pos[k] = i; });
+
+  const series = [];
+  const status = [];
+  const zeroRefs = [];
+  const SHORT = { kuznets: "库兹涅茨", juglar: "朱格拉", kitchin: "基钦" };
+  ["kuznets", "juglar", "kitchin"].forEach(k => {
+    const c = cyc[k];
+    if (!c) return;
+    const vals = new Array(months.length).fill(null);
+    c.history.months.forEach((mo, i) => {
+      const j = pos[mo];
+      if (j != null) vals[j] = c.history.values[i];
+    });
+    const nn = vals.filter(v => v != null);
+    const mn = Math.min(...nn), mx = Math.max(...nn);
+    if (mn < 0 && mx > 0) {
+      zeroRefs.push({ value: (0 - mn) / (mx - mn) * 100, color: c.color, label: `${SHORT[k]} 0%` });
+    }
+    const norm = vals.map(v => v == null ? null : (v - mn) / ((mx - mn) || 1) * 100);
+    // 统计局 1—2 月合并发布导致 1 月无值：内部缺口线性桥接，与单独周期图的连线口径一致
+    for (let i = 0; i < norm.length; i++) {
+      if (norm[i] != null) continue;
+      let j = i;
+      while (j < norm.length && norm[j] == null) j++;
+      if (i > 0 && j < norm.length) {
+        const a = norm[i - 1], b = norm[j], steps = j - i + 1;
+        for (let k = i; k < j; k++) norm[k] = a + (b - a) * (k - i + 1) / steps;
+      }
+      i = j - 1;
+    }
+    series.push({
+      _key: k,
+      name: `${SHORT[k]} ${c.latest_value}`,
+      values: norm,
+      color: c.color, width: 1.6,
+    });
+    status.push(`<span style="color:${c.color};font-weight:600;">${SHORT[k]}</span> ${c.phase_name || "—"}（${c.indicator} ${c.latest_value}${k === "kuznets" ? "点" : "%"}）`);
+  });
+  if ((kd || {}).timeline && kd.timeline.length) {
+    const PHASE_V = { 回升: 66, 繁荣: 100, 滞胀: 33, 萧条: 0 };
+    const bands = [];
+    kd.timeline.forEach(cy => (cy.phases || []).forEach(ph => bands.push(ph)));
+    series.push({
+      _key: "kondratievi",
+      name: `康波 ${kd.position.phase_name}`,
+      values: months.map(mo => {
+        const yy = parseInt(mo, 10);
+        const ph = bands.find(p => yy >= p.start && yy < p.end);
+        return ph ? PHASE_V[ph.name] : null;
+      }),
+      color: "#6366f1", width: 1.8,
+    });
+    status.push(`<span style="color:#6366f1;font-weight:600;">康波</span> 第${kd.position.cycle}波·${kd.position.phase_name}`);
+  }
+
+  cycleOverviewState = { months, series, zeroRefs };
+
+  const legend = [
+    { key: "kuznets", label: "库兹涅茨", color: (cyc.kuznets || {}).color || "#0ea5e9" },
+    { key: "juglar", label: "朱格拉", color: (cyc.juglar || {}).color || "#10b981" },
+    { key: "kitchin", label: "基钦", color: (cyc.kitchin || {}).color || "#f97316" },
+    { key: "kondratievi", label: "康波", color: "#6366f1" },
+  ];
+  const legendHtml = legend.map(item => `
+    <label style="display:inline-flex;align-items:center;gap:6px;margin-right:14px;cursor:pointer;font-size:12px;color:#374151;user-select:none;">
+      <input type="checkbox" data-cycle-key="${item.key}" ${cycleVisible[item.key] ? "checked" : ""}
+        style="accent-color:${item.color};cursor:pointer;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${item.color};"></span>
+      <span>${item.label}</span>
+    </label>
+  `).join("");
+
+  let h = `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px 0;margin-bottom:6px;">${legendHtml}</div>`;
+  h += `<div id="re-cy-unified"></div>`;
+  h += `<div style="font-size:12px;color:#374151;margin-top:8px;">${status.join("　·　")}</div>`;
+  h += `<div class="muted" style="font-size:11px;margin-top:4px;">各序列按自身历史最小/最大值归一化到 0～100（0=窗口低点、100=窗口高点），只比较所处位置，不代表绝对数值；图例名称后为最新读数；统计局不单发 1 月数据的缺口已线性桥接。彩色虚线为朱格拉/基钦各自的 0% 分界（同比正负增长）。点上方图例可隐藏/显示对应曲线。</div>`;
+  h += `<div style="margin-top:18px;border-top:1px solid #e2e8f0;padding-top:14px;">`;
+  h += `<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:8px;">四周期理论模型推演</div>`;
+  h += `<div id="re-cycle-model"></div>`;
+  h += `</div>`;
+  el.innerHTML = h;
+
+  // 图例 checkbox：切换显隐并即时重绘
+  el.querySelectorAll("input[data-cycle-key]").forEach(box => {
+    box.addEventListener("change", () => {
+      const k = box.getAttribute("data-cycle-key");
+      cycleVisible[k] = box.checked;
+      saveCycleVisible();
+      _drawCyclesOverviewChart();
+    });
+  });
+
+  _drawCyclesOverviewChart();
+  loadCycleModel();
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const btn = document.getElementById("real-estate-refresh-btn");
+  if (btn) btn.addEventListener("click", () => loadRealEstate(true));
+  loadRealEstate();
+});
 
 document.addEventListener("DOMContentLoaded", () => {
   ["births", "aging"].forEach(k => {
@@ -6168,6 +6896,14 @@ document.getElementById("filter-code-ob").addEventListener("input", () => {
   tableState.ob.page = 1;
   renderObRows();
 });
+document.getElementById("filter-industry-ob").addEventListener("change", () => {
+  tableState.ob.page = 1;
+  renderObRows();
+});
+document.getElementById("sort-ob").addEventListener("change", () => {
+  tableState.ob.page = 1;
+  renderObRows();
+});
 initMultiSelect("filter-board-ob", () => {
   tableState.ob.page = 1;
   renderObRows();
@@ -6180,6 +6916,8 @@ initMultiSelect("filter-signal-ob", () => {
 setMultiSelectOptions("filter-signal-ob", ["左侧埋伏", "右侧启动"]);
 document.getElementById("filter-reset-ob").addEventListener("click", () => {
   document.getElementById("filter-code-ob").value = "";
+  document.getElementById("filter-industry-ob").value = "";
+  document.getElementById("sort-ob").value = "score";
   clearMultiSelect("filter-board-ob");
   clearMultiSelect("filter-signal-ob");
   tableState.ob.page = 1;
@@ -6987,6 +7725,7 @@ function renderIndStocks() {
   });
 
   function showPage(id) {
+    if (id === "aging") id = "births"; // 老龄化已并入人口统计页，兼容旧链接
     if (!id || !pages[id]) id = "dashboard";
     // 隐藏所有页面
     Object.values(pages).forEach(p => p.el.classList.remove("active"));

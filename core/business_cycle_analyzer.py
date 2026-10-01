@@ -13,11 +13,14 @@
     分位低 + 下行 → 收缩
 
 数据充分性：一个周期至少要有 3 个完整循环才谈得上统计可信。朱格拉与库兹涅茨
-的可用数据分别只覆盖约 1.4 / 1.5 个循环，结论会标注为数据不足。
+的可用数据分别只覆盖约 0.5 / 1.5 个循环，结论会标注为数据不足。
 """
 from __future__ import annotations
 
+import json
+import re
 import time
+from pathlib import Path
 from typing import Any
 
 # ── 周期定义 ──
@@ -75,9 +78,11 @@ _CYCLES: dict[str, dict[str, Any]] = {
         "theory_label": "约 8~10 年",
         "smooth": 13,
         "color": "#8b5cf6",
-        "indicator": "固定资产投资同比",
+        "indicator": "固定资产投资累计同比（官方可比口径）",
         "indicator_note": (
-            "固定资产投资同比自 2012 年起可得，仅覆盖约 1.4 个理论循环，"
+            "数值直接解析统计局每月「全国固定资产投资基本情况」公报（可比口径，"
+            "东财/akshare 的同比列系未修订口径简单相除、失真严重，已弃用）。"
+            "公报列表最早回溯到 2021-11，序列仅覆盖约 0.5 个理论循环，"
             "不足以统计验证周期长度，阶段判定仅反映当前指标位置。"
         ),
         "corroborator": None,
@@ -243,10 +248,166 @@ def _fetch_industrial_yoy() -> list[tuple[str, float]]:
     return _series_from_df(ak.macro_china_gyzjz(), "月份", "同比增长")
 
 
+# ── 固定资产投资累计同比：统计局月度公报抓取 ──
+# 东财数据集（akshare macro_china_gdzctz）的"同比增长"列是用未修订的历史累计值
+# 直接相除得到的，而统计局 2018 年后多次修订固投统计口径，导致大量失真值
+# （如 2021-11 +196.65、2019-11 -62.99，官方实为 +2.6% / +5.4%），整体弃用。
+# 改为解析 www.stats.gov.cn/sj/zxfb/ 「全国固定资产投资基本情况」公报正文里的
+# 官方可比口径同比。公报列表分页最深回到 2021-11，序列以该月为最早点。
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+_CYCLE_CACHE_FILE = PROJECT_ROOT / "business_cycle_cache.json"
+
+_NBS_LIST_URL = "https://www.stats.gov.cn/sj/zxfb/{page}"
+_NBS_LIST_BASE = "https://www.stats.gov.cn/sj/zxfb/"
+_NBS_UA = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+}
+_FAI_HREF_RE = re.compile(
+    r"href=['\"]([^'\"]*?t\d{8}_\d+\.html)['\"][^>]*>\s*([^<\n]*全国固定资产投资[^<\n]*)"
+)
+
+
+def _fai_title_key(title: str) -> str | None:
+    """公报标题三种口径 → 数据月份：1—X月份 / 上半年(=6月) / 无前缀=全年(=12月)。"""
+    m = re.search(r"(20\d\d)年1[—\-–](\d{1,2})月份全国固定资产投资", title)
+    if m:
+        return f"{m.group(1)}-{int(m.group(2)):02d}"
+    m = re.search(r"(20\d\d)年上半年全国固定资产投资", title)
+    if m:
+        return f"{m.group(1)}-06"
+    m = re.search(r"(20\d\d)年全国固定资产投资", title)
+    if m:
+        return f"{m.group(1)}-12"
+    return None
+
+
+def _cycle_load_cache() -> dict[str, Any]:
+    try:
+        return json.loads(_CYCLE_CACHE_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _cycle_save_cache(cache: dict[str, Any]) -> None:
+    try:
+        _CYCLE_CACHE_FILE.write_text(
+            json.dumps(cache, ensure_ascii=False, indent=1), encoding="utf-8"
+        )
+    except Exception:
+        pass
+
+
+def _nbs_get(url: str, timeout: int = 20, retries: int = 2) -> str | None:
+    import requests
+
+    for i in range(retries):
+        try:
+            r = requests.get(url, headers=_NBS_UA, timeout=timeout)
+            if r.status_code == 200 and len(r.text) > 500:
+                r.encoding = "utf-8"
+                return r.text
+        except Exception:
+            pass
+        time.sleep(1.5 * (i + 1))
+    return None
+
+
+def _fai_expected_months() -> list[str]:
+    """公报应已发布的数据月份（次月 20 日截止；1 月无单独口径）。"""
+    now = time.localtime()
+    out: list[str] = []
+    y, m, day = now[0], now[1], now[2]
+    # 数据月 M 的公报在 M+1 月中旬发布：次月 20 日前连 M-1 都不视为"应有"
+    m -= 1
+    if m == 0:
+        m, y = 12, y - 1
+    if day < 20:
+        m -= 1
+        if m == 0:
+            m, y = 12, y - 1
+    while (y, m) >= (2021, 11):
+        if m != 1:  # 1 月数据与 2 月合并发布（1—2月份口径）
+            out.append(f"{y:04d}-{m:02d}")
+        m -= 1
+        if m == 0:
+            m, y = 12, y - 1
+    return sorted(out)
+
+
+def _discover_fai_releases(need: set[str]) -> dict[str, tuple[str, str]]:
+    """扫描公报列表页，返回 {YYYY-MM: (文章URL, 标题)}。
+
+    need 是尚未入库的月份集合；找齐即停（增量运行时通常只扫 1-2 页）。
+    """
+    found: dict[str, tuple[str, str]] = {}
+    fails = 0
+    for i in range(80):
+        page = "index.html" if i == 0 else f"index_{i}.html"
+        html = _nbs_get(_NBS_LIST_URL.format(page=page))
+        if not html:
+            # 统计局对连续快速请求偶发掐连接；容忍连续 2 页失败再放弃
+            fails += 1
+            if fails >= 2:
+                break
+            time.sleep(2.0)
+            continue
+        fails = 0
+        for hit in _FAI_HREF_RE.finditer(html):
+            href, title = hit.group(1), hit.group(2).strip()
+            key = _fai_title_key(title)
+            if key and key not in found:
+                url = href if href.startswith("http") else _NBS_LIST_BASE + href.lstrip("./")
+                found[key] = (url, title)
+        if not (need - set(found)):
+            break
+        time.sleep(0.4)
+    return found
+
+
+def _parse_fai_article_yoy(html: str | None, title: str) -> float | None:
+    """提取公报中的固定资产投资累计同比（下降为负）。"""
+    if html:
+        plain = re.sub(r"<[^>]+>", "", html)
+        plain = re.sub(r"\s+", "", plain)
+        m = re.search(
+            r"固定资产投资（不含农户）[^。]{0,40}?(?:同比|比上年)(增长|下降|持平)([\d.]+)?%?",
+            plain,
+        )
+        if m:
+            word, num = m.group(1), m.group(2)
+            if word == "持平":
+                return 0.0
+            if num:
+                return -float(num) if word == "下降" else float(num)
+    # 早年公报标题自带增速（如「2021年1—10月份全国固定资产投资增长3.3%」）
+    m = re.search(r"(增长|下降)([\d.]+)%", title)
+    if m:
+        return -float(m.group(2)) if m.group(1) == "下降" else float(m.group(2))
+    return None
+
+
 def _fetch_fai_yoy() -> list[tuple[str, float]]:
-    """固定资产投资同比（2012 起）。"""
-    import akshare as ak
-    return _series_from_df(ak.macro_china_gdzctz(), "月份", "同比增长")
+    """固定资产投资累计同比（官方可比口径），结果持久化后增量更新。"""
+    cache = _cycle_load_cache()
+    fai: dict[str, float] = {k: v for k, v in (cache.get("fai") or {}).items()}
+    need = {m for m in _fai_expected_months() if m not in fai}
+    if need:
+        releases = _discover_fai_releases(need)
+        changed = False
+        for key in sorted(releases, reverse=True):
+            if key not in need:
+                continue
+            url, title = releases[key]
+            val = _parse_fai_article_yoy(_nbs_get(url, timeout=25), title)
+            if val is not None and abs(val) <= 50:
+                fai[key] = val
+                changed = True
+            time.sleep(0.3)
+        if changed:
+            cache["fai"] = fai
+            _cycle_save_cache(cache)
+    return sorted(fai.items())
 
 
 def _fetch_real_estate_index() -> list[tuple[str, float]]:
