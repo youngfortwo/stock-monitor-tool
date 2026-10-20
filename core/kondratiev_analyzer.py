@@ -1,16 +1,9 @@
 #!/usr/bin/env python3
 """康波周期（Kondratiev Wave）分析器。
 
-基于周金涛（中信建投）康波理论框架，以 ~54 年为一个完整康波周期，
-每个周期分为四阶段（回升→繁荣→滞胀→萧条），每阶段约 13-15 年。
-
-历史康波划分（参考周金涛《涛动周期论》及后续研究者修正）：
-  第1轮 1784-1842  蒸汽机/纺织
-  第2轮 1842-1896  铁路/钢铁
-  第3轮 1896-1948  电力/化工
-  第4轮 1948-1982  汽车/石油
-  第5轮 1982-2015  信息技术/通信
-  第6轮 2015-      新能源/AI/生物技术
+采用一套研究者估计的阶段日历作理论定位。长波是否存在、周期边界及技术革命对应关系
+均有争议；本模块不是对康波的统计识别，也不应视作精确预测。下方日历当前覆盖五轮，
+其日期与阶段仅代表本项目采用的假设口径。
 
 本模块：
   1. 根据当前日期定位所处康波轮次与阶段
@@ -25,71 +18,64 @@ from typing import Any
 
 # ── 康波历史划分（start_year, end_year, 技术革命, 四阶段边界）──
 # 每阶段 (start_year, end_year, phase_key, phase_name)
+# 早期轮次参考范·杜因分期及周金涛研究；第五轮阶段节点结合其2016年演讲。
+# 周金涛将2015视为进入萧条阶段的拐点，并估计萧条可能持续到2025；2025之后的回升
+# 是为图表连续性所作的推演，不是书中确认的历史事实或已验证预测。
+# 战争空窗期（1802-1815、1913-1920）并入前一阶段以保持连续。
 _KONDRATIEV_CYCLES: list[dict[str, Any]] = [
     {
         "cycle": 1,
-        "start": 1784, "end": 1842,
-        "tech": "蒸汽机 / 纺织工业",
+        "start": 1782, "end": 1845,
+        "tech": "纺织工业 / 蒸汽机",
         "phases": [
-            (1784, 1798, "spring", "回升"),
-            (1798, 1812, "summer", "繁荣"),
-            (1812, 1827, "autumn", "滞胀"),
-            (1827, 1842, "winter", "萧条"),
+            (1782, 1815, "summer", "繁荣"),   # 含拿破仑战争 1802-1815
+            (1815, 1825, "autumn", "滞胀"),
+            (1825, 1836, "winter", "萧条"),
+            (1836, 1845, "spring", "回升"),
         ],
     },
     {
         "cycle": 2,
-        "start": 1842, "end": 1896,
-        "tech": "铁路 / 钢铁",
+        "start": 1845, "end": 1892,
+        "tech": "钢铁 / 铁路",
         "phases": [
-            (1842, 1856, "spring", "回升"),
-            (1856, 1870, "summer", "繁荣"),
-            (1870, 1883, "autumn", "滞胀"),
-            (1883, 1896, "winter", "萧条"),
+            (1845, 1866, "summer", "繁荣"),
+            (1866, 1873, "autumn", "滞胀"),
+            (1873, 1883, "winter", "萧条"),
+            (1883, 1892, "spring", "回升"),
         ],
     },
     {
         "cycle": 3,
-        "start": 1896, "end": 1948,
-        "tech": "电力 / 化工",
+        "start": 1892, "end": 1948,
+        "tech": "电气 / 重化工业",
         "phases": [
-            (1896, 1910, "spring", "回升"),
-            (1910, 1924, "summer", "繁荣"),
-            (1924, 1936, "autumn", "滞胀"),
-            (1936, 1948, "winter", "萧条"),
+            (1892, 1920, "summer", "繁荣"),   # 含一战 1913-1920
+            (1920, 1929, "autumn", "滞胀"),
+            (1929, 1937, "winter", "萧条"),
+            (1937, 1948, "spring", "回升"),
         ],
     },
     {
         "cycle": 4,
-        "start": 1948, "end": 1982,
-        "tech": "汽车 / 石油",
+        "start": 1948, "end": 1991,
+        "tech": "汽车 / 电子计算机",
         "phases": [
-            (1948, 1962, "spring", "回升"),
-            (1962, 1973, "summer", "繁荣"),
-            (1973, 1978, "autumn", "滞胀"),
-            (1978, 1982, "winter", "萧条"),
+            (1948, 1966, "summer", "繁荣"),
+            (1966, 1973, "autumn", "滞胀"),
+            (1973, 1982, "winter", "萧条"),
+            (1982, 1991, "spring", "回升"),
         ],
     },
     {
         "cycle": 5,
-        "start": 1982, "end": 2015,
-        "tech": "信息技术 / 通信",
+        "start": 1991, "end": 2030,
+        "tech": "信息技术",
         "phases": [
-            (1982, 1991, "spring", "回升"),
-            (1991, 2000, "summer", "繁荣"),
-            (2000, 2008, "autumn", "滞胀"),
-            (2008, 2015, "winter", "萧条"),
-        ],
-    },
-    {
-        "cycle": 6,
-        "start": 2015, "end": 2070,
-        "tech": "新能源 / AI / 生物技术",
-        "phases": [
-            (2015, 2019, "spring", "回升"),
-            (2019, 2023, "summer", "繁荣"),
-            (2023, 2030, "autumn", "滞胀"),
-            (2030, 2040, "winter", "萧条"),
+            (1991, 2004, "summer", "繁荣"),
+            (2004, 2015, "autumn", "衰退（滞胀）"),
+            (2015, 2025, "winter", "萧条（估计至2025）"),
+            (2025, 2030, "spring", "回升（推演）"),
         ],
     },
 ]
@@ -202,7 +188,7 @@ def _locate_phase(year: int) -> dict[str, Any]:
                         "phase_total_years": total,
                         "phase_remaining_years": total - elapsed,
                     }
-            # 年份在轮次内但超出已知阶段（第6轮远期预测）
+            # 年份在轮次内但超出已知阶段：延续最后一个阶段标签，属于日历外推。
             last = cycle["phases"][-1]
             return {
                 "cycle": cycle["cycle"],
@@ -582,6 +568,7 @@ def analyze_kondratiev(as_of: dt.date | None = None) -> dict[str, Any]:
 
     phase_key = position["phase_key"]
     phase_info = _PHASE_INFO[phase_key]
+    display_phase_name = position.get("phase_name") or phase_info["name"]
 
     all_series = _fetch_all_series()
     indicators = _snapshot_from_series(all_series)
@@ -678,7 +665,7 @@ def analyze_kondratiev(as_of: dt.date | None = None) -> dict[str, Any]:
         "position": position,
         "phase": {
             "key": phase_key,
-            "name": phase_info["name"],
+            "name": display_phase_name,
             "season": phase_info["season"],
             "color": phase_info["color"],
             "description": phase_info["description"],
@@ -695,7 +682,7 @@ def analyze_kondratiev(as_of: dt.date | None = None) -> dict[str, Any]:
         "timeline": timeline,
         "summary": (
             f"当前处于第{position['cycle']}轮康波（{position['tech']}）的"
-            f"「{phase_info['name']}」阶段（{phase_info['season']}），"
+            f"「{display_phase_name}」阶段（{phase_info['season']}），"
             f"本轮阶段已进行 {position['phase_elapsed_years']} 年"
             f"（进度 {position['phase_progress_pct']:.0f}%），"
             f"预计 {position['phase_end']} 年前后进入下一阶段。"

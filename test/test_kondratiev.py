@@ -104,11 +104,13 @@ assert spring_b[0] > summer_b[1], "春与夏的股债利差区间必须分离"
 print(f"用例7 主判别指标区间分离 春{spring_b} vs 夏{summer_b}: PASS")
 
 # ── 用例8：阶段定位 ──
-assert _locate_phase(2026)["phase_key"] == "autumn"
-assert _locate_phase(2026)["cycle"] == 6
-assert _locate_phase(2010)["phase_key"] == "winter"
+assert _locate_phase(2026)["phase_key"] == "spring"
+assert _locate_phase(2026)["cycle"] == 5
+assert _locate_phase(2010)["phase_key"] == "autumn"
 assert _locate_phase(2010)["cycle"] == 5
 assert _locate_phase(1995)["phase_key"] == "summer"
+assert _locate_phase(2018)["phase_key"] == "winter"
+assert _locate_phase(2024)["phase_key"] == "winter"
 print("用例8 阶段日历定位: PASS")
 
 print("\n全部单元用例通过\n")
