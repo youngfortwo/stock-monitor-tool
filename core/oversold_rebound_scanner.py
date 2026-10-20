@@ -45,8 +45,8 @@ def is_risk_name(name: str) -> bool:
 
 
 def evaluate_oversold_rebound(code: str, name: str, industry: str, history: pd.DataFrame,
-                              n_days: int = 60, m_pct: float = 30.0,
-                              right_max_days: int = 5, right_min_surge: float = 2.0,
+                              n_days: int = 60, m_pct: float = 25.0,
+                              right_max_days: int = 10, right_min_surge: float = 2.0,
                               right_max_rebound: float = 50.0,
                               signal_mode: str = "both") -> dict:
     """评估单只股票（左侧埋伏 + 右侧启动双分支），返回完整指标 dict。
@@ -239,8 +239,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--include-bj", action="store_true", default=False)
     parser.add_argument("--min-history-days", type=int, default=120)
     parser.add_argument("--n-days", type=int, default=60, help="下跌观察周期 N（可改120看更长周期）")
-    parser.add_argument("--m-pct", type=float, default=30.0, help="最低回撤幅度 M（%%，腰斩可改50）")
-    parser.add_argument("--right-max-days", type=int, default=5,
+    parser.add_argument("--m-pct", type=float, default=25.0, help="最低回撤幅度 M（%%，腰斩可改50）")
+    parser.add_argument("--right-max-days", type=int, default=10,
                         help="右侧分支：连续站上 MA30 的最大天数（越小越接近刚启动）")
     parser.add_argument("--right-min-surge", type=float, default=2.0,
                         help="右侧分支：近3日最大量 / 30日均量 的最小倍数")

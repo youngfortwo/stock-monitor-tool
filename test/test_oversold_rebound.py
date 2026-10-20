@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """超跌反弹策略单元测试：构造K线验证左侧埋伏 / 右侧启动两个分支的条件边界。
 
-共享门槛：超跌(回撤≥30%) + 未突破(C<HH90*0.75) + 排雷。
+共享门槛：超跌(回撤≥25%) + 未突破(C<HH90*0.75) + 排雷。
 左侧埋伏：不创新低 + 距低点反弹<30% + 均线抬头(MA5>MA13>MA21) + 量能初现（未爆拉）。
-右侧启动：刚站上MA30(1~5天) + 近3日放量≥2倍VOL30 + MA5>MA13 + 距低点反弹<50%。
+右侧启动：刚站上MA30(1~10天) + 近3日放量≥2倍VOL30 + MA5>MA13 + 距低点反弹<50%。
 
 否定用例断言 left_match / right_match 而非 is_match：两分支为 OR 关系，
 断言总结果会让"某分支该拒却被另一分支放行"的缺陷被掩盖。
@@ -81,8 +81,8 @@ print("用例1 标准抬头:", "入选" if r["is_match"] else "未入选",
 assert r["is_match"], f"应入选: 未通过 {failed_flags(r)}"
 assert r["signal_type"] == "左侧埋伏", f"应标记为左侧埋伏，实为 {r['signal_type']}"
 
-# ── 用例2：回撤不足 35%（共享门槛，两分支都应拒）──
-hist2 = build_case(crash_to=75, recover_to=82)  # 100→75 仅约26%回撤
+# ── 用例2：回撤不足 25%（共享门槛，两分支都应拒）──
+hist2 = build_case(crash_to=78, recover_to=84)  # 100→78 仅约23%回撤
 r2 = evaluate_oversold_rebound("600001", "测试二", "银行", hist2)
 print("用例2 回撤不足:", "入选" if r2["is_match"] else "未入选", f"dd={r2['max_drawdown_pct']}%")
 assert not r2["is_match"] and "oversold" in failed_flags(r2)
@@ -159,8 +159,8 @@ assert r10["is_match"], f"应入选: 未通过 {failed_flags(r10)}"
 assert r10["signal_type"] == "右侧启动", f"应标记为右侧启动，实为 {r10['signal_type']}"
 assert r10["matched_reason"].startswith("右侧启动: ")
 
-# ── 用例11：已站上 MA30 太久（右侧应拒，不算"刚启动"）──
-hist11 = build_right_case(launch_days=10, launch_vols=np.linspace(1_500_000, 2_500_000, 10))
+# ── 用例11：已站上 MA30 太久（右侧应拒，不算"刚启动"，上限 10 天）──
+hist11 = build_right_case(launch_days=12, launch_vols=np.linspace(1_500_000, 2_500_000, 12))
 r11 = evaluate_oversold_rebound("600009", "测试十一", "银行", hist11)
 print("用例11 启动过久:", "右侧入选" if r11["right_match"] else "右侧未入选",
       f"ma30_days={r11['days_above_ma30']}")

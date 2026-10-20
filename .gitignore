@@ -84,3 +84,8 @@ htmlcov/
 
 # 扫描机独立仓库（有自己远程，扫描机经此 pull 部署）
 sepa_stage2_agent/
+
+# 运行期数据缓存
+business_cycle_cache.json
+cycle_model_cache.json
+real_estate_cache.json
