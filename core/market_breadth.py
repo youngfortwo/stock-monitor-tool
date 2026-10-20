@@ -130,6 +130,38 @@ def fetch_spot_data() -> pd.DataFrame:
     raise RuntimeError("All market breadth sources failed: " + " | ".join(errors))
 
 
+def _parse_cn_amount(v) -> float | None:
+    """解析同花顺金额字符串："285.81万" / "-1.98亿" / 纯数字 → 元。"""
+    if v is None:
+        return None
+    s = str(v).strip().replace(",", "")
+    if not s or s in {"--", "-", "—"}:
+        return None
+    try:
+        if s.endswith("亿"):
+            return float(s[:-1]) * 1e8
+        if s.endswith("万"):
+            return float(s[:-1]) * 1e4
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _fetch_net_inflow_10jqka() -> tuple[float | None, int]:
+    """同花顺即时个股资金流：全市场"净额"（流入-流出）求和，单位元。
+
+    约 105 页、耗时 7~10 秒。返回 (净额合计, 有效样本数)。
+    """
+    df = ak.stock_fund_flow_individual(symbol="即时")
+    if df is None or df.empty or "净额" not in df.columns:
+        return None, 0
+    vals = [_parse_cn_amount(v) for v in df["净额"]]
+    nums = [v for v in vals if v is not None]
+    if not nums:
+        return None, 0
+    return round(sum(nums), 2), len(nums)
+
+
 def build_market_breadth(spot: pd.DataFrame) -> dict:
     data = spot[["代码", "名称", "涨跌幅"]].copy()
     data["代码"] = data["代码"].astype(str).str.zfill(6)
@@ -153,12 +185,22 @@ def build_market_breadth(spot: pd.DataFrame) -> dict:
         if not amt.empty:
             total_amount = round(float(amt.sum()), 2)
 
-    # 主力净流入（元）— 仅 eastmoney_direct 源有"主力净流入"列
+    # 主力净流入（元）— 仅 eastmoney_direct 源有"主力净流入"列；
+    # 新浪等源缺失时回退同花顺即时资金流（口径为流入-流出净额，与东财主力口径略有差异）
     net_inflow = None
+    net_inflow_source = None
     if "主力净流入" in spot.columns:
         mf = pd.to_numeric(spot["主力净流入"], errors="coerce").dropna()
         if not mf.empty:
             net_inflow = round(float(mf.sum()), 2)
+            net_inflow_source = "eastmoney"
+    if net_inflow is None:
+        try:
+            net_inflow, n = _fetch_net_inflow_10jqka()
+            if net_inflow is not None:
+                net_inflow_source = f"10jqka({n})"
+        except Exception as exc:
+            print(f"10jqka net inflow fallback failed: {exc}")
 
     return {
         "generated_at": dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -174,6 +216,7 @@ def build_market_breadth(spot: pd.DataFrame) -> dict:
         "median_pct_change": round(float(data["涨跌幅"].median()), 2),
         "total_amount": total_amount,
         "net_inflow": net_inflow,
+        "net_inflow_source": net_inflow_source,
     }
 
 

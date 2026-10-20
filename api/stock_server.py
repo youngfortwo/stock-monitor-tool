@@ -378,6 +378,42 @@ def _get_equity_bond_spread(force_refresh: bool = False) -> dict:
     return _spread_cache if _spread_cache is not None else {}
 
 
+_DEVIATION_TIERS = [
+    (-10.0, 0.0, "正常波动区"),
+    (-15.0, -10.0, "轻度调整"),
+    (-20.0, -15.0, "中度调整"),
+    (-25.0, -20.0, "重度调整"),
+    (-100.0, -25.0, "极端调整"),
+]
+
+
+def _deviation_tier_stats(closes, devs, horizon: int = 20) -> list[dict]:
+    """按负乖离率档位统计历史上其后 horizon 个交易日（约1个月）的反弹情况。
+
+    返回每档：样本天数、其后 horizon 日上涨概率、平均累计涨跌幅。
+    注意按"天"计数，连续阴会计入同档多次，样本非独立。
+    """
+    stats = []
+    n = len(closes)
+    for lo, hi, label in _DEVIATION_TIERS:
+        idxs = [i for i in range(n - horizon) if devs[i] == devs[i] and lo < devs[i] <= hi]
+        rets = [
+            (closes[i + horizon] / closes[i] - 1) * 100
+            for i in idxs
+            if closes[i] == closes[i] and closes[i] > 0
+        ]
+        ups = sum(1 for r in rets if r > 0)
+        stats.append({
+            "tier": label, "lo": lo, "hi": hi,
+            "range": f"{lo}%~{hi}%" if lo > -100 else f"低于 {hi}%",
+            "horizon": horizon,
+            "count": len(idxs),
+            "prob_up_pct": round(ups / len(rets) * 100, 1) if rets else None,
+            "avg_ret_pct": round(sum(rets) / len(rets), 2) if rets else None,
+        })
+    return stats
+
+
 def _fetch_m1m2_data():
     """获取 M1/M2 货币供应量数据。
 
@@ -1561,6 +1597,69 @@ def _compute_board_avg_rank(snapshots: list[dict]) -> dict:
     return result
 
 
+def _compute_recent_industry_hotness(boards: list[dict], date_str: str) -> dict[str, dict]:
+    """用当日综合评分排名、近五日平均排名和近三日涨幅识别近期热门行业。"""
+    snapshots = []
+    try:
+        paths = sorted(_industry_rank_history_dir().glob("*.json"), reverse=True)
+        for path in paths:
+            if path.stem >= date_str:
+                continue
+            try:
+                snap = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if snap.get("boards"):
+                snapshots.append(snap)
+            if len(snapshots) >= 4:
+                break
+    except Exception as exc:
+        print(f"[industry_rank] 读取近期热度快照失败: {exc}", file=sys.stderr)
+    snapshots.append({"date": date_str, "source": "current", "boards": boards})
+    snapshots.sort(key=lambda snap: str(snap.get("date", "")))
+    snapshots = snapshots[-5:]
+    avg_ranks = _compute_board_avg_rank(snapshots)
+    recent_three = snapshots[-3:]
+    total = len(boards)
+    score_cutoff = max(1, int(total * 0.20 + 0.999))
+    avg_cutoff = max(1, total * 0.30)
+    result = {}
+    for board in boards:
+        name = str(board.get("name", "")).strip()
+        meta = avg_ranks.get(name, {})
+        days = int(meta.get("days") or 0)
+        score_rank = board.get("score_rank")
+        try:
+            score_rank = int(score_rank)
+        except (TypeError, ValueError):
+            score_rank = None
+        avg_rank = meta.get("avg_rank")
+        growth_3d = 1.0
+        pct_3d_days = 0
+        for snap in recent_three:
+            daily_board = next((item for item in snap.get("boards", [])
+                                if str(item.get("name", "")).strip() == name), None)
+            try:
+                daily_pct = float(daily_board.get("pct_chg")) if daily_board else None
+            except (TypeError, ValueError):
+                daily_pct = None
+            if daily_pct is not None:
+                growth_3d *= 1 + daily_pct / 100
+                pct_3d_days += 1
+        pct_3d = (growth_3d - 1) * 100 if pct_3d_days == len(recent_three) else None
+        enough_history = days >= 3
+        hot = bool(enough_history and score_rank is not None and score_rank <= score_cutoff
+                   and avg_rank is not None and avg_rank <= avg_cutoff
+                   and pct_3d is not None and pct_3d > 0)
+        result[name] = {
+            "recent_hot": hot if enough_history else None,
+            "recent_avg_rank": avg_rank,
+            "recent_days": days,
+            "recent_score_rank": score_rank,
+        }
+    return result
+
+
 def _score_industry_boards(boards: list[dict]) -> list[dict]:
     """对东财行业板块做综合评分，判断板块资金轮动强度。
 
@@ -1803,6 +1902,81 @@ def _fetch_tencent_div_yields(codes: list) -> dict:
                 except ValueError:
                     pass
     return result
+
+
+def _fetch_tencent_market_caps(codes: list) -> dict:
+    """从腾讯行情批量获取总市值（元）。字段45=总市值(亿)，接口 GBK 编码。"""
+    import requests as _req
+
+    session = _req.Session()
+    session.trust_env = False
+    session.headers.update({"User-Agent": "Mozilla/5.0"})
+
+    result: dict = {}
+    batch_size = 100
+    for i in range(0, len(codes), batch_size):
+        batch = codes[i:i + batch_size]
+        q = ",".join(("sh" if c.startswith("6") else "sz") + c for c in batch)
+        try:
+            r = session.get("https://qt.gtimg.cn/q=" + q, timeout=10)
+            r.raise_for_status()
+            text = r.content.decode("gbk", errors="ignore")
+        except Exception:
+            continue
+        for m in re.finditer(r'v_(?:sh|sz|bj)(\d{6})="([^"]*)"', text):
+            parts = m.group(2).split("~")
+            if len(parts) > 45 and parts[45]:
+                try:
+                    result[m.group(1)] = round(float(parts[45]) * 1e8, 2)
+                except ValueError:
+                    pass
+    return result
+
+
+_daily_refresh_ts: dict = {}
+
+
+def _refresh_daily_cache_if_stale(code: str) -> None:
+    """daily_cache 落后于最近交易日时用新浪日线(前复权)重拉该票。
+
+    收藏列表的涨停标签等依赖本地日线，而全市场扫描不覆盖所有票，
+    这里按需补齐单票。每票 10 分钟内不重复刷新。
+    """
+    from daily_cache import cache_path
+
+    now_ts = time.time()
+    if now_ts - _daily_refresh_ts.get(code, 0) < 600:
+        return
+    today = _latest_trading_date()
+    p = cache_path(code)
+    if p.exists():
+        try:
+            df = pd.read_csv(p)
+            if not df.empty and str(df["date"].iloc[-1])[:10] >= today:
+                return
+        except Exception:
+            pass
+    _daily_refresh_ts[code] = now_ts
+    try:
+        import datetime as _dt
+        start = (_dt.date.today() - _dt.timedelta(days=520)).strftime("%Y%m%d")
+        symbol = ("sh" if code.startswith("6") else "sz") + code
+        history = ak.stock_zh_a_daily(symbol=symbol, start_date=start,
+                                      end_date=today.replace("-", ""), adjust="qfq")
+        if history is None or history.empty:
+            return
+        history = history.reset_index(drop=True)
+        if "date" in history.columns:
+            history["date"] = history["date"].astype(str).str[:10]
+        for col in ["open", "high", "low", "close", "volume", "amount", "turnover"]:
+            if col in history.columns:
+                history[col] = pd.to_numeric(history[col], errors="coerce")
+        history = history.dropna(subset=["close", "volume", "amount"])
+        if len(history) >= 60:
+            p.parent.mkdir(exist_ok=True)
+            history.to_csv(p, index=False, encoding="utf-8")
+    except Exception as exc:
+        print(f"[daily_cache] 刷新 {code} 失败: {exc}", file=sys.stderr)
 
 
 def _limit_up_thr(code: str, name: str) -> float:
@@ -2752,6 +2926,9 @@ class StockHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/watchlist":
             self.handle_watchlist()
             return
+        if parsed.path == "/api/stock_search":
+            self.handle_stock_search(parsed.query)
+            return
         if parsed.path == "/api/investor/update":
             self.handle_investor_update(parsed.query)
             return
@@ -3230,67 +3407,41 @@ class StockHandler(SimpleHTTPRequestHandler):
             self.write_json({"error": str(exc)}, status=500)
 
     def handle_cycle_model(self, query: str = "") -> None:
-        """GET /api/cycle_model：四周期（康波/库兹涅茨/朱格拉/基钦）理论正弦模型。
+        """GET /api/cycle_model：数据驱动的四周期叠加模型（方案 B）。
 
-        用各周期长度生成以 0 为中枢、-1~+1 为上下限的理论波形，并给出综合景气线。
-        用于在四周期走势总览中展示类似「康波+库兹涅茨+朱格拉+基钦」的叠加模型图。
+        基钦/朱格拉/库兹涅茨从真实宏观指标中提取 HP 周期成分，康波因数据长度不足沿用阶段日历定位。
+        历史区间使用真实数据，未来区间用拟合阻尼正弦外推。
         """
-        import datetime as _dt
-        import math
         params = parse_qs(query)
         start_year = 1980
         end_year = 2060
+        force = False
         try:
             start_year = max(1800, min(2100, int(params.get("start", ["1980"])[0])))
             end_year = max(1800, min(2100, int(params.get("end", ["2060"])[0])))
+            force = params.get("force", ["false"])[0].lower() == "true"
         except (ValueError, TypeError):
             pass
         if end_year <= start_year:
             end_year = start_year + 80
 
-        # 周期定义：起点年份对应波谷（-1），之后按正弦上行
-        cycles = [
-            {"key": "kondratievi", "name": "康波", "period": 55.0, "start": 2015, "color": "#6366f1", "desc": "55年技术革命周期"},
-            {"key": "kuznets", "name": "库兹涅茨", "period": 20.0, "start": 2020, "color": "#f59e0b", "desc": "20年地产/建筑周期"},
-            {"key": "juglar", "name": "朱格拉", "period": 9.0, "start": 2022, "color": "#10b981", "desc": "9年资本支出周期"},
-            {"key": "kitchin", "name": "基钦", "period": 3.5, "start": 2023, "color": "#0ea5e9", "desc": "3.5年库存周期"},
-        ]
+        try:
+            from cycle_model_analyzer import analyze_cycle_model
+        except Exception as exc:
+            traceback.print_exc()
+            self.write_json(
+                {"error": f"cycle_model_analyzer 模块加载失败：{exc}。"
+                          f"请确认 cycle_model_analyzer.py 已部署到服务端 core 目录"},
+                status=500,
+            )
+            return
 
-        years = list(range(start_year, end_year + 1))
-        series = []
-        composite = [0.0] * len(years)
-        for c in cycles:
-            vals = []
-            for y in years:
-                phase = 2 * math.pi * (y - c["start"]) / c["period"] - math.pi / 2
-                v = math.sin(phase)
-                vals.append(round(v, 4))
-            series.append({
-                "key": c["key"],
-                "name": c["name"],
-                "color": c["color"],
-                "desc": c["desc"],
-                "values": vals,
-            })
-            for i, v in enumerate(vals):
-                composite[i] += v
-        composite = [round(v / len(cycles), 4) for v in composite]
-
-        result = {
-            "generated_at": _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "start_year": start_year,
-            "end_year": end_year,
-            "current_year": _dt.date.today().year,
-            "years": years,
-            "series": series,
-            "composite": {
-                "name": "四周期综合景气",
-                "color": "#dc2626",
-                "values": composite,
-            },
-            "note": "各周期按理论长度以正弦波建模，0轴为景气中性线；综合景气为四周期等权平均。",
-        }
-        self.write_json(result)
+        try:
+            result = analyze_cycle_model(start_year=start_year, end_year=end_year, force=force)
+            self.write_json(result)
+        except Exception as exc:
+            traceback.print_exc()
+            self.write_json({"error": str(exc)}, status=500)
 
     def handle_demographics(self, query: str = "") -> None:
         """GET /api/demographics：中国新生儿统计 + 老龄化统计。"""
@@ -3396,64 +3547,79 @@ class StockHandler(SimpleHTTPRequestHandler):
             self.write_json({"error": str(exc)}, status=500)
 
     def handle_index_deviation(self) -> None:
-        """三大指数负乖离率判断：上证指数、深圳成指、创业板指。
+        """指数负乖离率判断：上证指数、深圳成指、创业板指、沪深300。
 
-        计算 (收盘价 - MA250) / MA250 × 100%，负值表示价格低于年线。
+        计算 (收盘价 - MA200) / MA200 × 100%，负值表示价格低于半年线（约 10 个月）。
         阈值：
             上证指数 负乖离率 > 15% → 反弹预警
             深圳成指 负乖离率 > 20% → 反弹预警
             创业板指 负乖离率 > 25% → 反弹预警
+            沪深300  负乖离率 > 15% → 反弹预警
+        另按档位给出该指数历史上乖离落入各区后 20 个交易日的反弹概率。
         """
         indices = [
             {"code": "000001", "symbol": "sh000001", "name": "上证指数", "threshold": 15},
             {"code": "399001", "symbol": "sz399001", "name": "深圳成指", "threshold": 20},
             {"code": "399006", "symbol": "sz399006", "name": "创业板指", "threshold": 25},
+            {"code": "000300", "symbol": "sh000300", "name": "沪深300", "threshold": 15},
         ]
         results = []
         try:
             for idx in indices:
                 try:
                     df = ak.stock_zh_index_daily(symbol=idx["symbol"])
-                    if df is None or df.empty or len(df) < 250:
+                    if df is None or df.empty or len(df) < 200:
                         results.append({
                             "name": idx["name"],
+                            "symbol": idx["symbol"],
                             "close": None,
-                            "ma250": None,
+                            "ma200": None,
                             "deviation": None,
                             "alert": False,
                             "error": "数据不足",
                         })
                         continue
-                    df["ma250"] = df["close"].rolling(250).mean()
+                    df["ma200"] = df["close"].rolling(200).mean()
                     latest = df.iloc[-1]
                     close = float(latest["close"])
-                    ma250 = float(latest["ma250"])
-                    if pd.isna(ma250) or ma250 <= 0:
+                    ma200 = float(latest["ma200"])
+                    if pd.isna(ma200) or ma200 <= 0:
                         results.append({
                             "name": idx["name"],
+                            "symbol": idx["symbol"],
                             "close": round(close, 2),
-                            "ma250": None,
+                            "ma200": None,
                             "deviation": None,
                             "alert": False,
-                            "error": "MA250 不可用",
+                            "error": "MA200 不可用",
                         })
                         continue
-                    deviation = round((close - ma250) / ma250 * 100, 2)
+                    deviation = round((close - ma200) / ma200 * 100, 2)
                     alert = deviation < 0 and abs(deviation) > idx["threshold"]
+                    dev_series = ((df["close"] - df["ma200"]) / df["ma200"] * 100).to_numpy(dtype=float)
+                    tiers = _deviation_tier_stats(df["close"].to_numpy(dtype=float), dev_series)
+                    cur_tier = next(
+                        (t["tier"] for t in tiers if t["lo"] < deviation <= t["hi"]),
+                        _DEVIATION_TIERS[-1][2] if deviation <= -100 else "高于均线",
+                    )
                     results.append({
                         "name": idx["name"],
+                        "symbol": idx["symbol"],
                         "close": round(close, 2),
-                        "ma250": round(ma250, 2),
+                        "ma200": round(ma200, 2),
                         "deviation": deviation,
                         "threshold": idx["threshold"],
                         "alert": alert,
+                        "current_tier": cur_tier,
+                        "tiers": tiers,
                         "alert_msg": f"负乖离率 {abs(deviation):.1f}% 超过阈值 {idx['threshold']}%，注意反弹！" if alert else "",
                     })
                 except Exception as e:
                     results.append({
                         "name": idx["name"],
+                        "symbol": idx["symbol"],
                         "close": None,
-                        "ma250": None,
+                        "ma200": None,
                         "deviation": None,
                         "alert": False,
                         "error": str(e)[:100],
@@ -3481,6 +3647,9 @@ class StockHandler(SimpleHTTPRequestHandler):
         try:
             result = _fetch_industry_board_rank(refresh=refresh)
             boards = result.get("boards") or []
+            hotness = _compute_recent_industry_hotness(boards, result.get("date", ""))
+            for board in boards:
+                board.update(hotness.get(str(board.get("name", "")).strip(), {}))
             if industry_filter:
                 boards = [b for b in boards if industry_filter in b.get("name", "")]
             self.write_json({
@@ -3572,10 +3741,19 @@ class StockHandler(SimpleHTTPRequestHandler):
                 name_map[s.get("code")] = s.get("name")
                 ind_ov_map[s.get("code")] = s.get("industry", "")
 
+        # 市值优先用腾讯实时源（东财 push2 被限流时整体分析缓存会过期）
+        tencent_caps = {}
+        try:
+            tencent_caps = _fetch_tencent_market_caps(sorted(wl.keys()))
+        except Exception:
+            pass
+
         stocks = []
-        for code in sorted(wl.keys()):
-            item = wl[code]
-            cap = cap_map.get(code) or ind_cap_map.get(code, 0)
+        # 按收藏时间倒序：新增加的个股放最前面（无 added_at 的旧数据排最后）
+        ordered = sorted(wl.items(), key=lambda kv: str(kv[1].get("added_at") or ""), reverse=True)
+        for code, item in ordered:
+            _refresh_daily_cache_if_stale(code)
+            cap = tencent_caps.get(code) or cap_map.get(code) or ind_cap_map.get(code, 0)
             industry = ind_ov_map.get(code) or ind_map.get(code, "")
             name = item.get("name") or name_map.get(code, "")
             stocks.append({
@@ -3588,6 +3766,56 @@ class StockHandler(SimpleHTTPRequestHandler):
                 "tags": _calc_limit_up_tags(code, name),
             })
         self.write_json({"stocks": stocks})
+
+    def handle_stock_search(self, query: str) -> None:
+        """GET /api/stock_search?q=：按代码或名称搜索 A 股（供收藏列表"增加个股"）。
+
+        数据源优先「股票整体分析」实时缓存；东财被限流导致缓存为空时，
+        回退本地行业分类缓存（全市场 代码+名称+细分行业）。
+        """
+        try:
+            qs = parse_qs(query or "")
+            q = (qs.get("q") or [""])[0].strip()
+            if not q:
+                self.write_json({"results": []})
+                return
+
+            pairs: list = []
+            ov = _stock_overview_cache.get("data")
+            if ov:
+                pairs = [(str(s.get("code", "")), str(s.get("name", "")),
+                          str(s.get("industry", ""))) for s in ov.get("stocks", [])]
+            if not pairs:
+                try:
+                    with open("industry_classification_cache.json", encoding="utf-8") as f:
+                        st = json.load(f).get("stocks", {})
+                    pairs = [(str(c), str(v.get("name", "")),
+                              str(v.get("em_sub_industry") or v.get("industry") or ""))
+                             for c, v in st.items()]
+                except Exception:
+                    pairs = []
+
+            is_digit = q.isdigit()
+            exact, prefix, contains = [], [], []
+            for code, name, ind in pairs:
+                if is_digit:
+                    if code == q.zfill(6):
+                        exact.append({"code": code, "name": name, "industry": ind})
+                    elif code.startswith(q):
+                        prefix.append({"code": code, "name": name, "industry": ind})
+                else:
+                    qu = q.upper()
+                    if name.upper() == qu:
+                        exact.append({"code": code, "name": name, "industry": ind})
+                    elif name.upper().startswith(qu):
+                        prefix.append({"code": code, "name": name, "industry": ind})
+                    elif qu in name.upper():
+                        contains.append({"code": code, "name": name, "industry": ind})
+            results = (exact + prefix + contains)[:20]
+            self.write_json({"results": results})
+        except Exception as exc:
+            traceback.print_exc()
+            self.write_json({"error": str(exc), "results": []}, status=500)
 
     def handle_watchlist_post(self) -> None:
         """POST /api/watchlist：body {action: add|remove|note, code, name?, note?}。"""
@@ -3753,6 +3981,27 @@ class StockHandler(SimpleHTTPRequestHandler):
             return
 
         _scan_running[key] = True
+        progress_suffix = {
+            "stage1": "s1",
+            "stage2": "s2",
+            "value_bottom": "vb",
+            "oversold": "ob",
+        }[scan_type]
+        # 立即覆盖上一次的完成状态；否则浏览器轮询可能在 worker 启动前读到旧状态。
+        progress_path = PROJECT_ROOT / f"scan_progress_{progress_suffix}.json"
+        try:
+            progress_path.write_text(json.dumps({
+                "status": "running",
+                "current_batch": 0,
+                "total_batches": (total + batch - 1) // batch,
+                "total": total,
+                "processed_stocks": 0,
+                "percent": 0,
+                "message": "正在准备实时扫描…",
+                "updated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            }, ensure_ascii=False), encoding="utf-8")
+        except Exception as exc:
+            print(f"Scan progress initialization failed: {exc}", file=sys.stderr)
 
         def _run():
             try:
