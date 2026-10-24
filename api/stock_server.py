@@ -1660,12 +1660,12 @@ def _compute_recent_industry_hotness(boards: list[dict], date_str: str) -> dict[
     return result
 
 
-def _score_industry_boards(boards: list[dict]) -> list[dict]:
-    """对东财行业板块做综合评分，判断板块资金轮动强度。
+def _score_boards(boards: list[dict]) -> list[dict]:
+    """对板块做综合评分，判断板块资金轮动强度（行业/概念通用）。
 
     维度（权重）：
         主力资金 30%（net_inflow，f62 主力净流入）
-        涨停情绪 25%（zt_count，行业内涨停家数）
+        涨停情绪 25%（zt_count，板块内涨停家数）
         近5日动量 25%（pct_5d，f109 近5日涨跌幅）
         成交活跃 20%（turnover，f8 换手率）
     各维度标准化到 [0,100] 后加权求和得到综合得分（score），
@@ -1799,7 +1799,7 @@ def _fetch_industry_board_rank(refresh: bool = False) -> dict:
         b["zt_count"] = len(stocks)
 
     # ── 综合评分（板块资金轮动强度）──
-    _score_industry_boards(boards)
+    _score_boards(boards)
 
     boards.sort(key=lambda x: x["pct_chg"])
 
@@ -2483,40 +2483,139 @@ def _save_concept_rank_snapshot(date_str: str, boards: list[dict], source: str) 
         print(f"[concept_rank] 保存快照失败 {date_str}: {exc}", file=sys.stderr)
 
 
-def _load_concept_rank_snapshots(days: int = 20) -> list[dict]:
-    """加载最近 N 天的概念板块快照（按日期升序）。"""
+def _load_latest_concept_rank_snapshot(eastmoney_only: bool = False) -> dict | None:
+    """读取最近一份概念板块每日快照，作为数据源不可用时的回退数据。
+
+    eastmoney_only=True 时只认东财口径快照（含 net_inflow，字段与行业板块一致），
+    新浪快照缺少净流入/换手/涨跌家数，评分口径不完整，只在最后兜底时使用。
+    """
     try:
-        files = sorted(_concept_rank_history_dir().glob("*.json"))
+        files = sorted(_concept_rank_history_dir().glob("*.json"), reverse=True)
+        for path in files:
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            boards = payload.get("boards") or []
+            if not boards:
+                continue
+            if eastmoney_only and not any(b.get("net_inflow") is not None for b in boards):
+                continue
+            if boards and "score" not in boards[0]:
+                # 早期快照未归档评分字段，读取时按同一模型补算
+                _score_boards(boards)
+            date_str = payload.get("date") or path.stem
+            result = {
+                "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "source": f"snapshot:{date_str}",
+                "total": len(boards),
+                "boards": boards,
+                "date": date_str,
+            }
+            if date_str == _latest_trading_date():
+                _concept_rank_cache["data"] = result
+                _concept_rank_cache["date"] = date_str
+            return result
+    except Exception as exc:
+        print(f"[concept_rank] 读取快照失败: {exc}", file=sys.stderr)
+    return None
+
+
+def _load_rank_snapshot_by_date(history_dir: Path, date_str: str) -> dict | None:
+    """按日期读取板块排行历史快照（行业/概念通用），供日期筛选查询。
+
+    早期快照缺评分字段时按同一模型补算；generated_at 取文件归档时间。
+    """
+    path = history_dir / f"{date_str}.json"
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(f"[rank_history] 快照读取失败 {date_str}: {exc}", file=sys.stderr)
+        return None
+    boards = payload.get("boards") or []
+    if not boards:
+        return None
+    if "score" not in boards[0]:
+        _score_boards(boards)
+    try:
+        generated = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(path.stat().st_mtime))
+    except Exception:
+        generated = ""
+    return {
+        "generated_at": generated,
+        "source": f"snapshot:{date_str}",
+        "total": len(boards),
+        "boards": boards,
+        "date": payload.get("date") or date_str,
+    }
+
+
+def _list_rank_snapshot_dates(history_dir: Path, limit: int = 90) -> list[str]:
+    """列出历史快照日期（降序），供前端日期筛选下拉框使用。"""
+    try:
+        return sorted((p.stem for p in history_dir.glob("*.json")), reverse=True)[:limit]
     except Exception:
         return []
-    if not files:
-        return []
-    recent = files[-days:] if len(files) > days else files
-    out: list[dict] = []
-    for f in recent:
+
+
+def _attach_zt_stocks_by_concept(boards: list[dict], session) -> None:
+    """把当日涨停个股按所属概念归类挂到对应概念板块（就地写入 zt_stocks/zt_count）。
+
+    涨停股池只有 hybk（行业）字段，概念归属需按个股另行查询东财 datacenter 概念映射，
+    名称与板块名精确匹配；一只股可同时计入多个概念，与东财口径一致。
+    """
+    zt_groups = _fetch_zt_pool_by_industry(session)
+    items: list[dict] = []
+    seen: set[str] = set()
+    for lst in zt_groups.values():
+        for it in lst:
+            code = str(it.get("code", ""))
+            if code and code not in seen:
+                seen.add(code)
+                items.append(it)
+
+    concept_map: dict[str, list[str]] = {}
+    if items:
         try:
-            d = json.loads(f.read_text(encoding="utf-8"))
-            if d.get("boards"):
-                out.append(d)
-        except Exception:
-            continue
-    return out
+            from industry_analyzer import _em_concept_map
+            concept_map = _em_concept_map([str(it.get("code", "")) for it in items])
+        except Exception as exc:
+            print(f"[concept_rank] 概念映射查询失败，涨停列留空: {exc}", file=sys.stderr)
+
+    board_names = {b["name"].strip() for b in boards}
+    by_board: dict[str, list[dict]] = {}
+    for it in items:
+        for cname in concept_map.get(str(it.get("code", "")), []):
+            cname = str(cname).strip()
+            if cname in board_names:
+                by_board.setdefault(cname, []).append(it)
+
+    for b in boards:
+        stocks = by_board.get(b["name"].strip(), [])
+        stocks.sort(key=lambda s: ((s.get("days") or 1, s.get("pct") or 0)), reverse=True)
+        b["zt_stocks"] = stocks
+        b["zt_count"] = len(stocks)
 
 
-def _fetch_concept_board_rank() -> dict:
-    """获取概念板块当日行情并保存快照。
+def _fetch_concept_board_rank(refresh: bool = False) -> dict:
+    """获取概念板块当日行情并保存快照（与行业板块同口径：净流入/涨停/综合评分）。
 
     数据源优先级：
-      1. 东方财富 push2 clist（fs=m:90 t:3 f:!50）—— 有上涨/下跌家数和换手率
-      2. 新浪概念板块（newFLJK.php?param=class）—— 175个概念，无上涨/下跌家数
-    按天缓存：同一天内只拉取一次。
+      1. 东方财富 push2 clist（fs=m:90 t:3 f:!50）—— 完整字段，与行业板块一致
+      2. 最近一份东财口径快照 —— push2 被限流/封禁时兜底，字段完整但为历史日期
+      3. 新浪概念板块（newFLJK.php?param=class）—— 仅前两者都不可用时，缺净流入/涨停
+      4. 任意格式的历史快照
+    按天缓存：同一天内只拉取一次（refresh=1 强制刷新）。快照仅归档东财数据，
+    避免新浪口径（无净流入/涨停）稀释历史。
     """
     import requests as _req
 
     today = _latest_trading_date()
     cached = _concept_rank_cache.get("data")
     cached_date = _concept_rank_cache.get("date", "")
-    if cached and cached_date == today:
+    if cached and cached_date == today and not refresh:
         return cached
 
     session = _req.Session()
@@ -2530,16 +2629,34 @@ def _fetch_concept_board_rank() -> dict:
     boards = _fetch_industry_rank_eastmoney(session, fs="m:90 t:3 f:!50")
     source = "eastmoney"
 
-    # 方案2: 新浪概念板块 fallback
+    # 方案2: 最近一份东财口径快照
     if not boards:
+        fallback = _load_latest_concept_rank_snapshot(eastmoney_only=True)
+        if fallback:
+            return fallback
+
+        # 方案3: 新浪概念板块（字段不全，最后才用）
         boards = _fetch_industry_rank_sina(
             session,
             url="https://money.finance.sina.com.cn/q/view/newFLJK.php?param=class",
         )
         source = "sina"
+        if not boards:
+            # 方案4: 任意格式历史快照
+            fallback = _load_latest_concept_rank_snapshot()
+            if fallback:
+                return fallback
+            raise RuntimeError("概念板块接口不可用（东财 push2、东财口径快照与新浪均失败）")
 
-    if not boards:
-        raise RuntimeError("概念板块接口不可用（东财 push2 与新浪均失败）")
+    if source == "sina":
+        # 新浪概念名与东财概念映射不一致，涨停无法归类；净流入/换手新浪也不提供
+        for b in boards:
+            b["zt_stocks"] = []
+            b["zt_count"] = 0
+    else:
+        _attach_zt_stocks_by_concept(boards, session)
+
+    _score_boards(boards)
 
     boards.sort(key=lambda x: x["pct_chg"])
 
@@ -2552,76 +2669,9 @@ def _fetch_concept_board_rank() -> dict:
     }
     _concept_rank_cache["data"] = result
     _concept_rank_cache["date"] = today
-    _save_concept_rank_snapshot(today, boards, source)
+    if source == "eastmoney":
+        _save_concept_rank_snapshot(today, boards, source)
     return result
-
-
-def _fetch_concept_rank_history(days: int = 20, date_filter: str = "", concept_filter: str = "") -> dict:
-    """获取最近 N 天概念板块排行数据 + 20天平均排名。
-
-    参数：
-        days: 取最近多少个交易日的快照（默认20）
-        date_filter: 指定日期 "YYYY-MM-DD"，只返回该日数据；为空返回全部
-        concept_filter: 概念名称关键词，模糊匹配过滤
-    """
-    # 触发当日快照拉取（若当天尚未拉取）
-    today_error = ""
-    today_source = ""
-    try:
-        result = _fetch_concept_board_rank()
-        today_source = result.get("source", "")
-        # 东财失败但新浪 fallback 成功时，提示数据源降级
-        if today_source == "sina":
-            today_error = "东财 push2 限流，已降级到新浪数据源（无上涨/下跌家数和换手率）"
-    except Exception as exc:
-        today_error = str(exc)
-        print(f"[concept_rank_history] 当日快照拉取失败: {exc}", file=sys.stderr)
-
-    snapshots = _load_concept_rank_snapshots(days)
-    if not snapshots:
-        return {
-            "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "days_available": 0,
-            "days_requested": days,
-            "date_filter": date_filter,
-            "concept_filter": concept_filter,
-            "avg_ranks": {},
-            "rows": [],
-            "today_fetch_error": today_error,
-        }
-
-    avg_ranks = _compute_board_avg_rank(snapshots)
-
-    # 展平为行
-    rows: list[dict] = []
-    for snap in snapshots:
-        snap_date = snap.get("date", "")
-        if date_filter and snap_date != date_filter:
-            continue
-        snap_source = snap.get("source", "")
-        for b in snap.get("boards", []):
-            name = b.get("name", "").strip()
-            if concept_filter and concept_filter not in name:
-                continue
-            row = dict(b)
-            row["date"] = snap_date
-            row["source"] = snap_source
-            meta = avg_ranks.get(name)
-            row["avg_rank"] = meta["avg_rank"] if meta else None
-            row["rank_days"] = meta["days"] if meta else 0
-            rows.append(row)
-
-    return {
-        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "days_available": len(snapshots),
-        "days_requested": days,
-        "date_filter": date_filter,
-        "concept_filter": concept_filter,
-        "date_list": [s.get("date", "") for s in snapshots],
-        "avg_ranks": avg_ranks,
-        "rows": rows,
-        "today_fetch_error": today_error,
-    }
 
 
 def fetch_fundamental(code: str, force_refresh: bool = False) -> dict:
@@ -3607,6 +3657,7 @@ class StockHandler(SimpleHTTPRequestHandler):
                         "symbol": idx["symbol"],
                         "close": round(close, 2),
                         "ma200": round(ma200, 2),
+                        "data_date": str(latest["date"])[:10],
                         "deviation": deviation,
                         "threshold": idx["threshold"],
                         "alert": alert,
@@ -3635,6 +3686,7 @@ class StockHandler(SimpleHTTPRequestHandler):
         查询参数：
             industry: 行业名称关键词，模糊匹配过滤
             refresh: 1 强制刷新当日缓存（手动刷新按钮）
+            date: YYYY-MM-DD 查询历史快照（缺省=最新交易日）
 
         返回字段：板块代码、名称、涨跌幅、换手率、主力净流入、上涨/下跌家数、
         领涨股、涨停个股列表（zt_stocks：代码/名称/涨幅/N天M板/首次封板时间）。
@@ -3644,8 +3696,16 @@ class StockHandler(SimpleHTTPRequestHandler):
         params = parse_qs(unquote(query, encoding="utf-8"))
         industry_filter = params.get("industry", [""])[0].strip()
         refresh = params.get("refresh", [""])[0] == "1"
+        date_query = params.get("date", [""])[0].strip()
         try:
-            result = _fetch_industry_board_rank(refresh=refresh)
+            if date_query:
+                # 显式指定日期：一律读当日快照（即使是最近交易日，也与实时口径区分）
+                result = _load_rank_snapshot_by_date(_industry_rank_history_dir(), date_query)
+                if not result:
+                    self.write_json({"error": f"{date_query} 无行业板块快照"}, status=404)
+                    return
+            else:
+                result = _fetch_industry_board_rank(refresh=refresh)
             boards = result.get("boards") or []
             hotness = _compute_recent_industry_hotness(boards, result.get("date", ""))
             for board in boards:
@@ -3658,33 +3718,48 @@ class StockHandler(SimpleHTTPRequestHandler):
                 "date": result.get("date", ""),
                 "total": len(boards),
                 "boards": boards,
+                "dates": _list_rank_snapshot_dates(_industry_rank_history_dir()),
             })
         except Exception as exc:
             traceback.print_exc()
             self.write_json({"error": str(exc)}, status=500)
 
     def handle_concept_rank(self, query: str) -> None:
-        """概念板块涨幅排行（最近 N 个交易日，含20天平均排名）。
+        """概念板块当日排行（与行业板块排行同口径的计算与展示）。
 
         查询参数：
-            days: 取最近多少个交易日快照（默认20）
-            date: 指定日期 "YYYY-MM-DD"，只返回该日数据；为空返回全部
             concept: 概念名称关键词，模糊匹配过滤
+            refresh: 1 强制刷新当日缓存（手动刷新按钮）
+            date: YYYY-MM-DD 查询历史快照（缺省=最新交易日）
 
-        数据源：东方财富 push2（概念板块无新浪回退）。
-        返回字段：日期、板块代码、名称、涨跌幅、涨跌额、换手率、上涨/下跌家数、领涨股、20天平均排名。
+        返回字段：板块代码、名称、涨跌幅、换手率、主力净流入、上涨/下跌家数、
+        领涨股、涨停个股列表（zt_stocks，按个股所属概念归类）、综合评分与分项分。
         """
-        params = parse_qs(query)
-        days = int(params.get("days", ["20"])[0] or "20")
-        date_filter = params.get("date", [""])[0].strip()
+        from urllib.parse import unquote
+        params = parse_qs(unquote(query, encoding="utf-8"))
         concept_filter = params.get("concept", [""])[0].strip()
+        refresh = params.get("refresh", [""])[0] == "1"
+        date_query = params.get("date", [""])[0].strip()
         try:
-            result = _fetch_concept_rank_history(
-                days=days,
-                date_filter=date_filter,
-                concept_filter=concept_filter,
-            )
-            self.write_json(result)
+            if date_query:
+                # 显式指定日期：一律读当日快照（即使是最近交易日，也与实时口径区分）
+                result = _load_rank_snapshot_by_date(_concept_rank_history_dir(), date_query)
+                if not result:
+                    self.write_json({"error": f"{date_query} 无概念板块快照"}, status=404)
+                    return
+            else:
+                result = _fetch_concept_board_rank(refresh=refresh)
+            boards = result.get("boards") or []
+            if concept_filter:
+                boards = [b for b in boards if concept_filter in b.get("name", "")]
+            self.write_json({
+                "generated_at": result.get("generated_at", ""),
+                "source": result.get("source", "eastmoney"),
+                "date": result.get("date", ""),
+                "total": len(boards),
+                "boards": boards,
+                "dates": _list_rank_snapshot_dates(_concept_rank_history_dir()),
+            })
         except Exception as exc:
             traceback.print_exc()
             self.write_json({"error": str(exc)}, status=500)
